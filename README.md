@@ -60,6 +60,11 @@ No Windows, os tokens são cifrados com DPAPI para o usuário atual e armazenado
 `%LOCALAPPDATA%\WA-Delivery\google-tokens.bin`. Eles persistem entre execuções para evitar logins
 frequentes, não ficam no repositório e não são incluídos no backup `.wabkp`.
 
+No Linux/WSL, instale `libsecret-tools` (o comando `secret-tool`) e tenha um Secret Service/chaveiro
+desbloqueado na sessão. Os tokens são armazenados nesse cofre do sistema e também ficam fora do
+backup. Se o WSL não possuir um Secret Service disponível, use a aplicação pelo Windows; não há
+fallback para token em texto puro.
+
 ## Atualização
 
 Faça um backup pela página **Configurações** antes de atualizar. Depois execute:

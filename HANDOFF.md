@@ -10,7 +10,7 @@ pendências e próximo passo. Não substituir o plano completo de produto em `AG
 
 - Branch de desenvolvimento: `feat/google-contacts-campaign-flow`
 - Base: `main` no commit `cfc3881`
-- Etapa em andamento: Fase 1 — OAuth e sincronização Google
+- Etapa concluída: Fase 1 — OAuth e sincronização Google
 - Merge para `main`: proibido até validação integral e aprovação do usuário
 
 ## Progresso
@@ -64,17 +64,18 @@ Concluído neste marco:
 - seção Google Contacts em Configurações com status, conta conectada, login, sincronização,
   desconexão, feedback de progresso/erro e tutorial expansível;
 - documentação no README para criação das credenciais OAuth e localização/segurança dos tokens.
+- armazenamento Linux/WSL no Secret Service por `secret-tool`, sem fallback em texto puro, com
+  seleção automática do cofre conforme o sistema operacional.
 
-Ainda pendente na Fase 1:
-
-- adaptador seguro para Linux/WSL e tutorial de credenciais Google Cloud.
+Fase 1 concluída. A validação com uma conta Google real permanece como QA manual dependente das
+credenciais do usuário; toda integração está atrás de contratos e coberta por HTTP/cofres simulados.
 
 ## Validações da última etapa
 
 - `npm.cmd run typecheck`: passou.
 - `npm.cmd run lint`: passou.
 - `npm.cmd run format:check`: passou.
-- `npm.cmd test`: 150 testes passaram, 0 falharam.
+- `npm.cmd test`: 152 testes passaram, 0 falharam.
 - `npm.cmd run build`: passou.
 - Observação do ambiente: dentro do sandbox, o loader `tsx` falhou em `uv_os_get_passwd` com
   `ENOMEM`; a mesma suíte executada fora do sandbox passou integralmente.
@@ -83,9 +84,9 @@ Ainda pendente na Fase 1:
 
 ## Próximo passo
 
-1. Fazer commit e push deste marco da Fase 1.
-2. Implementar estratégia segura para Linux/WSL e concluir a Fase 1.
-3. Iniciar Fase 2 com repositório de busca e compilador SQL dos filtros inteligentes.
+1. Fazer commit e push da conclusão da Fase 1.
+2. Iniciar Fase 2 com repositório de busca e compilador SQL dos filtros inteligentes.
+3. Adicionar filtros salvos, paginação, deduplicação e exceções de seleção.
 
 ## Decisões e cuidados ativos
 

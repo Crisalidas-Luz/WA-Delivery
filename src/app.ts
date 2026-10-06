@@ -25,6 +25,8 @@ import { BaileysWhatsAppProvider } from './providers/whatsapp/baileys/BaileysWha
 import { GooglePeopleApiProvider } from './providers/google/people/GooglePeopleApiProvider.js';
 import { ProtectedFileGoogleTokenStore } from './providers/google/token-store/ProtectedFileGoogleTokenStore.js';
 import { WindowsDpapiSecretProtector } from './providers/google/token-store/WindowsDpapiSecretProtector.js';
+import { LinuxSecretServiceGoogleTokenStore } from './providers/google/token-store/LinuxSecretServiceGoogleTokenStore.js';
+import type { GoogleTokenStore } from './providers/google/GooglePeopleProvider.js';
 import { GoogleContactsRepository } from './modules/google-contacts/GoogleContactsRepository.js';
 import { GoogleContactsSyncService } from './modules/google-contacts/GoogleContactsSyncService.js';
 import { GoogleAuthService } from './modules/google-auth/GoogleAuthService.js';
@@ -110,17 +112,14 @@ const server = await buildServer({
 function createGoogleService(): GoogleAuthService | undefined {
   const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim();
-  const localAppData = process.env.LOCALAPPDATA?.trim();
-  if (!clientId || !clientSecret || process.platform !== 'win32' || !localAppData) return undefined;
+  if (!clientId || !clientSecret) return undefined;
   const googleProvider = new GooglePeopleApiProvider({
     clientId,
     clientSecret,
     redirectUri: 'http://127.0.0.1:3000/api/google/oauth/callback',
   });
-  const tokenStore = new ProtectedFileGoogleTokenStore(
-    join(localAppData, 'WA-Delivery', 'google-tokens.bin'),
-    new WindowsDpapiSecretProtector(),
-  );
+  const tokenStore = createGoogleTokenStore();
+  if (!tokenStore) return undefined;
   const repository = new GoogleContactsRepository(database);
   return new GoogleAuthService(
     googleProvider,
@@ -128,6 +127,19 @@ function createGoogleService(): GoogleAuthService | undefined {
     repository,
     new GoogleContactsSyncService(repository, googleProvider, settings),
   );
+}
+
+function createGoogleTokenStore(): GoogleTokenStore | undefined {
+  if (process.platform === 'win32') {
+    const localAppData = process.env.LOCALAPPDATA?.trim();
+    if (!localAppData) return undefined;
+    return new ProtectedFileGoogleTokenStore(
+      join(localAppData, 'WA-Delivery', 'google-tokens.bin'),
+      new WindowsDpapiSecretProtector(),
+    );
+  }
+  if (process.platform === 'linux') return new LinuxSecretServiceGoogleTokenStore();
+  return undefined;
 }
 
 async function shutdown(): Promise<void> {
