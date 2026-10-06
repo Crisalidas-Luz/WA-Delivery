@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { openDatabase } from '../src/database/database.js';
+import { LATEST_SCHEMA_VERSION, openDatabase } from '../src/database/database.js';
 import { SettingsRepository } from '../src/modules/settings/SettingsRepository.js';
 import { SettingsService } from '../src/modules/settings/SettingsService.js';
 import {
@@ -86,7 +86,7 @@ describe('migração da tabela settings (v8)', () => {
     const database = openDatabase(':memory:');
     assert.equal(
       database.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()?.version,
-      9,
+      LATEST_SCHEMA_VERSION,
     );
     const repository = new SettingsRepository(database);
     repository.setAll({ defaultCountryCode: '55' });

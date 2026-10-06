@@ -4,9 +4,49 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
-import { openDatabase } from '../src/database/database.js';
+import { LATEST_SCHEMA_VERSION, openDatabase } from '../src/database/database.js';
 
 describe('migrações do banco', () => {
+  it('cria a fundação Google e restringe a instalação a uma conta ativa', () => {
+    const database = openDatabase(':memory:');
+    try {
+      assert.equal(
+        database.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()?.version,
+        LATEST_SCHEMA_VERSION,
+      );
+      database
+        .prepare(
+          `INSERT INTO google_accounts
+            (id, google_subject, email, display_name, token_store_key)
+           VALUES (1, ?, ?, ?, ?)`,
+        )
+        .run('subject-1', 'user@example.com', 'Usuário', 'google:subject-1');
+      assert.throws(() =>
+        database
+          .prepare(
+            `INSERT INTO google_accounts
+              (id, google_subject, email, display_name, token_store_key)
+             VALUES (2, ?, ?, ?, ?)`,
+          )
+          .run('subject-2', 'other@example.com', 'Outro', 'google:subject-2'),
+      );
+      database
+        .prepare(
+          `INSERT INTO google_contacts
+            (account_id, resource_name, display_name, raw_json)
+           VALUES (1, 'people/123', 'Ana', '{}')`,
+        )
+        .run();
+      const contact = database
+        .prepare('SELECT resource_name, display_name FROM google_contacts')
+        .get() as { resource_name: string; display_name: string };
+      assert.equal(contact.resource_name, 'people/123');
+      assert.equal(contact.display_name, 'Ana');
+    } finally {
+      database.close();
+    }
+  });
+
   it('aplica a versão 5 sobre uma campanha preparada com destinatários', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'wa-delivery-migration-'));
     const filename = join(directory, 'v4.db');
@@ -44,7 +84,7 @@ describe('migrações do banco', () => {
       const migrated = openDatabase(filename);
       assert.equal(
         migrated.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()?.version,
-        9,
+        LATEST_SCHEMA_VERSION,
       );
       const recipient = migrated
         .prepare(
@@ -95,7 +135,7 @@ describe('migrações do banco', () => {
       const migrated = openDatabase(filename);
       assert.equal(
         migrated.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()?.version,
-        9,
+        LATEST_SCHEMA_VERSION,
       );
       // A coluna nova existe e a campanha populada foi preservada.
       const row = migrated
@@ -149,7 +189,7 @@ describe('migrações do banco', () => {
       const migrated = openDatabase(filename);
       assert.equal(
         migrated.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()?.version,
-        9,
+        LATEST_SCHEMA_VERSION,
       );
       // A tentativa existente foi preservada e a coluna nova aceita a classificação.
       const before = migrated
@@ -195,7 +235,7 @@ describe('migrações do banco', () => {
       const migrated = openDatabase(filename);
       assert.equal(
         migrated.prepare('SELECT MAX(version) AS version FROM schema_migrations').get()?.version,
-        9,
+        LATEST_SCHEMA_VERSION,
       );
       // O contato existente foi preservado com opt-out = 0 (default seguro).
       const row = migrated

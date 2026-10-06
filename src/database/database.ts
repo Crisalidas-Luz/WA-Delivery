@@ -190,6 +190,146 @@ const migrations = [
         CHECK (opted_out IN (0, 1));
     `,
   },
+  {
+    version: 10,
+    sql: `
+      CREATE TABLE google_accounts (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        google_subject TEXT NOT NULL UNIQUE,
+        email TEXT NOT NULL,
+        display_name TEXT NOT NULL,
+        token_store_key TEXT NOT NULL UNIQUE,
+        connected_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        disconnected_at TEXT
+      );
+
+      CREATE TABLE google_sync_state (
+        account_id INTEGER PRIMARY KEY REFERENCES google_accounts(id) ON DELETE CASCADE,
+        sync_token TEXT,
+        status TEXT NOT NULL DEFAULT 'idle'
+          CHECK (status IN ('idle', 'running', 'completed', 'failed')),
+        last_sync_type TEXT CHECK (last_sync_type IN ('full', 'incremental')),
+        last_full_sync_at TEXT,
+        last_incremental_sync_at TEXT,
+        last_error_code TEXT,
+        last_error_message TEXT,
+        created_count INTEGER NOT NULL DEFAULT 0,
+        updated_count INTEGER NOT NULL DEFAULT 0,
+        deleted_count INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE google_contacts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        account_id INTEGER NOT NULL REFERENCES google_accounts(id) ON DELETE CASCADE,
+        resource_name TEXT NOT NULL,
+        etag TEXT,
+        display_name TEXT NOT NULL DEFAULT '',
+        given_name TEXT NOT NULL DEFAULT '',
+        middle_name TEXT NOT NULL DEFAULT '',
+        family_name TEXT NOT NULL DEFAULT '',
+        phonetic_name TEXT NOT NULL DEFAULT '',
+        honorific_prefix TEXT NOT NULL DEFAULT '',
+        honorific_suffix TEXT NOT NULL DEFAULT '',
+        nickname TEXT NOT NULL DEFAULT '',
+        file_as TEXT NOT NULL DEFAULT '',
+        organization_name TEXT NOT NULL DEFAULT '',
+        organization_title TEXT NOT NULL DEFAULT '',
+        organization_department TEXT NOT NULL DEFAULT '',
+        birthday TEXT,
+        biography TEXT NOT NULL DEFAULT '',
+        raw_json TEXT NOT NULL DEFAULT '{}',
+        remote_deleted INTEGER NOT NULL DEFAULT 0 CHECK (remote_deleted IN (0, 1)),
+        remote_updated_at TEXT,
+        synced_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (account_id, resource_name)
+      );
+
+      CREATE INDEX idx_google_contacts_account_name
+        ON google_contacts(account_id, display_name, id);
+      CREATE INDEX idx_google_contacts_account_deleted
+        ON google_contacts(account_id, remote_deleted);
+
+      CREATE TABLE google_contact_phones (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        google_contact_id INTEGER NOT NULL REFERENCES google_contacts(id) ON DELETE CASCADE,
+        label TEXT NOT NULL DEFAULT '',
+        raw_value TEXT NOT NULL,
+        normalized_phone TEXT,
+        is_primary INTEGER NOT NULL DEFAULT 0 CHECK (is_primary IN (0, 1)),
+        is_valid INTEGER NOT NULL DEFAULT 0 CHECK (is_valid IN (0, 1)),
+        validation_reason TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX idx_google_contact_phones_contact
+        ON google_contact_phones(google_contact_id, is_primary DESC, id);
+      CREATE INDEX idx_google_contact_phones_normalized
+        ON google_contact_phones(normalized_phone);
+
+      CREATE TABLE google_contact_labels (
+        google_contact_id INTEGER NOT NULL REFERENCES google_contacts(id) ON DELETE CASCADE,
+        resource_name TEXT NOT NULL,
+        name TEXT NOT NULL,
+        PRIMARY KEY (google_contact_id, resource_name)
+      );
+
+      CREATE INDEX idx_google_contact_labels_name ON google_contact_labels(name);
+
+      CREATE TABLE saved_contact_filters (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        definition_json TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE TABLE contact_deletion_jobs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        campaign_id INTEGER REFERENCES campaigns(id) ON DELETE RESTRICT,
+        status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (status IN ('pending', 'running', 'completed', 'partial', 'failed', 'cancelled')),
+        requested_count INTEGER NOT NULL CHECK (requested_count >= 0),
+        filter_snapshot_json TEXT NOT NULL DEFAULT '{}',
+        confirmed_at TEXT NOT NULL,
+        started_at TEXT,
+        finished_at TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX idx_contact_deletion_jobs_campaign
+        ON contact_deletion_jobs(campaign_id, status);
+
+      CREATE TABLE contact_deletion_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id INTEGER NOT NULL REFERENCES contact_deletion_jobs(id) ON DELETE CASCADE,
+        google_contact_id INTEGER REFERENCES google_contacts(id) ON DELETE SET NULL,
+        resource_name_snapshot TEXT NOT NULL,
+        display_name_snapshot TEXT NOT NULL DEFAULT '',
+        phone_snapshot TEXT NOT NULL DEFAULT '',
+        reason_code TEXT NOT NULL,
+        evidence_json TEXT NOT NULL DEFAULT '{}',
+        status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (status IN ('pending', 'deleting', 'deleted', 'failed', 'already_missing', 'cancelled')),
+        attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+        last_error_code TEXT,
+        last_error_message TEXT,
+        requested_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        deleted_at TEXT,
+        verified_at TEXT,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (job_id, resource_name_snapshot)
+      );
+
+      CREATE INDEX idx_contact_deletion_items_job_status
+        ON contact_deletion_items(job_id, status, id);
+    `,
+  },
 ] as const;
 
 /** Versão de schema mais recente conhecida (maior versão de migration). */
