@@ -1,4 +1,4 @@
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { readFileSync } from 'node:fs';
 import { openDatabase, LATEST_SCHEMA_VERSION } from './database/database.js';
 import { SettingsRepository } from './modules/settings/SettingsRepository.js';
@@ -22,6 +22,12 @@ import { buildServer } from './web/server.js';
 import { BackupService } from './modules/backup/BackupService.js';
 import { logger } from './shared/logger.js';
 import { BaileysWhatsAppProvider } from './providers/whatsapp/baileys/BaileysWhatsAppProvider.js';
+import { GooglePeopleApiProvider } from './providers/google/people/GooglePeopleApiProvider.js';
+import { ProtectedFileGoogleTokenStore } from './providers/google/token-store/ProtectedFileGoogleTokenStore.js';
+import { WindowsDpapiSecretProtector } from './providers/google/token-store/WindowsDpapiSecretProtector.js';
+import { GoogleContactsRepository } from './modules/google-contacts/GoogleContactsRepository.js';
+import { GoogleContactsSyncService } from './modules/google-contacts/GoogleContactsSyncService.js';
+import { GoogleAuthService } from './modules/google-auth/GoogleAuthService.js';
 
 /** Lê a versão da aplicação do package.json (para metadados de backup). */
 function appVersion(): string {
@@ -43,6 +49,7 @@ const contacts = new ContactService(new ContactRepository(database), settings);
 const csvImports = new CsvImportService(contacts, settings);
 const media = new MediaService(new MediaRepository(database), resolve('data/media'));
 const campaigns = new CampaignService(new CampaignRepository(database), contacts, media);
+const google = createGoogleService();
 const queue = new CampaignQueueWorker(
   new CampaignQueueRepository(database),
   campaigns,
@@ -91,6 +98,7 @@ const server = await buildServer({
   campaigns,
   media,
   queue,
+  ...(google ? { google } : {}),
   backup,
   // Após restaurar, encerra para reiniciar limpo (RUN.bat/run.sh reabrem).
   onRestored: () => {
@@ -98,6 +106,29 @@ const server = await buildServer({
     process.exit(0);
   },
 });
+
+function createGoogleService(): GoogleAuthService | undefined {
+  const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim();
+  const localAppData = process.env.LOCALAPPDATA?.trim();
+  if (!clientId || !clientSecret || process.platform !== 'win32' || !localAppData) return undefined;
+  const googleProvider = new GooglePeopleApiProvider({
+    clientId,
+    clientSecret,
+    redirectUri: 'http://127.0.0.1:3000/api/google/oauth/callback',
+  });
+  const tokenStore = new ProtectedFileGoogleTokenStore(
+    join(localAppData, 'WA-Delivery', 'google-tokens.bin'),
+    new WindowsDpapiSecretProtector(),
+  );
+  const repository = new GoogleContactsRepository(database);
+  return new GoogleAuthService(
+    googleProvider,
+    tokenStore,
+    repository,
+    new GoogleContactsSyncService(repository, googleProvider, settings),
+  );
+}
 
 async function shutdown(): Promise<void> {
   queue.shutdown();

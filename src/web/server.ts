@@ -19,6 +19,8 @@ import { registerMediaRoutes } from './mediaRoutes.js';
 import { registerQueueRoutes } from './queueRoutes.js';
 import { registerSettingsRoutes } from './settingsRoutes.js';
 import { registerBackupRoutes } from './backupRoutes.js';
+import { registerGoogleRoutes } from './googleRoutes.js';
+import type { GoogleAuthService } from '../modules/google-auth/GoogleAuthService.js';
 
 export interface ServerDependencies {
   whatsappProvider: WhatsAppProvider;
@@ -29,6 +31,7 @@ export interface ServerDependencies {
   media: MediaService;
   queue: CampaignQueueWorker;
   backup?: BackupService;
+  google?: GoogleAuthService;
   onRestored?: () => void;
 }
 
@@ -95,6 +98,7 @@ export async function buildServer(dependencies: ServerDependencies): Promise<Fas
   registerMediaRoutes(server, media);
   registerQueueRoutes(server, queue);
   registerSettingsRoutes(server, settings);
+  registerGoogleRoutes(server, dependencies.google);
   if (backup)
     registerBackupRoutes(server, backup, {
       ...(dependencies.onRestored ? { onRestored: dependencies.onRestored } : {}),

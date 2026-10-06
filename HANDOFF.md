@@ -54,11 +54,17 @@ Concluído neste marco:
 - mapeamento defensivo da resposta `Person`, validação de `resourceName` e tradução de
   `EXPIRED_SYNC_TOKEN` para o fallback do serviço;
 - testes do fluxo OAuth e do cliente People API com HTTP simulado.
+- `GoogleAuthService` combinando conta, token store, login, refresh antecipado, sincronização,
+  revogação e desconexão;
+- rotas `/api/google/status`, `/oauth/start`, `/oauth/callback`, `/sync` e `/disconnect`, incluindo
+  respostas orientativas quando as credenciais ainda não estão configuradas;
+- composição real no `app.ts` via `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`, usando DPAPI e arquivo
+  em `%LOCALAPPDATA%/WA-Delivery`, portanto fora do backup;
+- testes de sessão, renovação, desconexão e rotas não configuradas/configuradas.
 
 Ainda pendente na Fase 1:
 
-- serviço de sessão que combina conta, token store, refresh e revogação;
-- rotas e interface para conectar, sincronizar e desconectar;
+- interface para conectar, sincronizar e desconectar;
 - adaptador seguro para Linux/WSL e tutorial de credenciais Google Cloud.
 
 ## Validações da última etapa
@@ -66,7 +72,7 @@ Ainda pendente na Fase 1:
 - `npm.cmd run typecheck`: passou.
 - `npm.cmd run lint`: passou.
 - `npm.cmd run format:check`: passou.
-- `npm.cmd test`: 146 testes passaram, 0 falharam.
+- `npm.cmd test`: 150 testes passaram, 0 falharam.
 - `npm.cmd run build`: passou.
 - Observação do ambiente: dentro do sandbox, o loader `tsx` falhou em `uv_os_get_passwd` com
   `ENOMEM`; a mesma suíte executada fora do sandbox passou integralmente.
@@ -76,8 +82,8 @@ Ainda pendente na Fase 1:
 ## Próximo passo
 
 1. Fazer commit e push deste marco da Fase 1.
-2. Implementar o cliente OAuth/People API concreto e o serviço de sessão.
-3. Expor status, conexão, callback, sincronização e desconexão por rotas testadas.
+2. Criar a interface de configuração/conexão Google e o tutorial Google Cloud.
+3. Implementar estratégia segura para Linux/WSL e concluir a Fase 1.
 
 ## Decisões e cuidados ativos
 

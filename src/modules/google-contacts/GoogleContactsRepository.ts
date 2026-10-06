@@ -10,6 +10,15 @@ export interface GoogleSyncState {
   lastSyncType?: 'full' | 'incremental';
 }
 
+export interface StoredGoogleAccount {
+  subject: string;
+  email: string;
+  displayName: string;
+  tokenStoreKey: string;
+  connectedAt: string;
+  disconnectedAt?: string;
+}
+
 export interface NormalizedGooglePhone {
   label: string;
   rawValue: string;
@@ -59,6 +68,42 @@ export class GoogleContactsRepository {
       ...(row.sync_token ? { syncToken: row.sync_token } : {}),
       ...(row.last_sync_type ? { lastSyncType: row.last_sync_type as 'full' | 'incremental' } : {}),
     };
+  }
+
+  public account(): StoredGoogleAccount | undefined {
+    const row = this.database
+      .prepare(
+        `SELECT google_subject, email, display_name, token_store_key, connected_at, disconnected_at
+         FROM google_accounts WHERE id = 1`,
+      )
+      .get() as
+      | {
+          google_subject: string;
+          email: string;
+          display_name: string;
+          token_store_key: string;
+          connected_at: string;
+          disconnected_at: string | null;
+        }
+      | undefined;
+    if (!row) return undefined;
+    return {
+      subject: row.google_subject,
+      email: row.email,
+      displayName: row.display_name,
+      tokenStoreKey: row.token_store_key,
+      connectedAt: row.connected_at,
+      ...(row.disconnected_at ? { disconnectedAt: row.disconnected_at } : {}),
+    };
+  }
+
+  public markDisconnected(): void {
+    this.database
+      .prepare(
+        `UPDATE google_accounts SET disconnected_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP WHERE id = 1`,
+      )
+      .run();
   }
 
   public beginSync(type: 'full' | 'incremental'): void {
