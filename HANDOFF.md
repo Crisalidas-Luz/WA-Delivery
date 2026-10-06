@@ -10,7 +10,7 @@ pendências e próximo passo. Não substituir o plano completo de produto em `AG
 
 - Branch de desenvolvimento: `feat/google-contacts-campaign-flow`
 - Base: `main` no commit `cfc3881`
-- Etapa concluída: Fase 0 — decisões técnicas e fundação
+- Etapa em andamento: Fase 1 — OAuth e sincronização Google
 - Merge para `main`: proibido até validação integral e aprovação do usuário
 
 ## Progresso
@@ -37,12 +37,32 @@ Detalhes implementados:
 - taxonomia inicial de elegibilidade/resultados e política conservadora de recomendação de exclusão;
 - 7 novos testes, totalizando 136 testes no projeto.
 
+### Fase 1 — OAuth e sincronização Google
+
+Concluído neste marco:
+
+- `GoogleContactsRepository` para conta única, estado de sincronização, upsert transacional de
+  contatos e substituição consistente de telefones/labels;
+- `GoogleContactsSyncService` com paginação de até 1000 contatos, sincronização completa e
+  incremental, contadores e fallback automático quando o sync token expira;
+- normalização de telefone na importação, preservando valor bruto e motivo quando inválido;
+- armazenamento de tokens em arquivo protegido e gravado atomicamente fora do diretório de backup;
+- proteção Windows DPAPI no escopo do usuário atual, sem passar token em argumentos do processo;
+- testes de paginação, sync token expirado, telefone inválido e persistência/remoção de tokens.
+
+Ainda pendente na Fase 1:
+
+- implementação HTTP/OAuth concreta da Google People API;
+- serviço de sessão que combina conta, token store, refresh e revogação;
+- rotas e interface para conectar, sincronizar e desconectar;
+- adaptador seguro para Linux/WSL e tutorial de credenciais Google Cloud.
+
 ## Validações da última etapa
 
 - `npm.cmd run typecheck`: passou.
 - `npm.cmd run lint`: passou.
 - `npm.cmd run format:check`: passou.
-- `npm.cmd test`: 136 testes passaram, 0 falharam.
+- `npm.cmd test`: 141 testes passaram, 0 falharam.
 - `npm.cmd run build`: passou.
 - Observação do ambiente: dentro do sandbox, o loader `tsx` falhou em `uv_os_get_passwd` com
   `ENOMEM`; a mesma suíte executada fora do sandbox passou integralmente.
@@ -51,9 +71,9 @@ Detalhes implementados:
 
 ## Próximo passo
 
-1. Fazer commit e push da Fase 0 no branch de desenvolvimento.
-2. Iniciar Fase 1 com repositórios da conta/agenda e implementação do cofre de tokens.
-3. Implementar OAuth Google e sincronização por páginas atrás do contrato já criado.
+1. Fazer commit e push deste marco da Fase 1.
+2. Implementar o cliente OAuth/People API concreto e o serviço de sessão.
+3. Expor status, conexão, callback, sincronização e desconexão por rotas testadas.
 
 ## Decisões e cuidados ativos
 

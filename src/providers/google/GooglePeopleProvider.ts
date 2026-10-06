@@ -80,6 +80,13 @@ export interface GooglePeopleProvider {
   deleteContact(tokens: GoogleTokenSet, resourceName: string): Promise<void>;
 }
 
+export class GoogleSyncTokenExpiredError extends Error {
+  public constructor() {
+    super('O token de sincronização do Google expirou.');
+    this.name = 'GoogleSyncTokenExpiredError';
+  }
+}
+
 export interface GoogleTokenStore {
   save(key: string, tokens: GoogleTokenSet): Promise<void>;
   load(key: string): Promise<GoogleTokenSet | undefined>;
