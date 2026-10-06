@@ -37,12 +37,28 @@ No WSL, abra `http://localhost:3000` no navegador do Windows caso ele não seja 
 ## Primeiro uso
 
 1. Conecte o WhatsApp pelo QR Code.
-2. Importe um CSV ou crie uma lista manual de contatos.
+2. Conecte e sincronize o Google Contacts, importe um CSV ou crie uma lista manual.
 3. Crie e revise a campanha.
 4. Confirme o envio.
 5. Acompanhe o progresso pela página de monitoramento.
 
 As configurações, contatos, campanhas, mídias e sessão ficam armazenados localmente no diretório `data/`.
+
+## Google Contacts
+
+Para usar a agenda Google como fonte principal:
+
+1. No [Google Cloud Console](https://console.cloud.google.com/), crie ou selecione um projeto.
+2. Em **APIs e serviços**, ative a **Google People API**.
+3. Configure a tela de consentimento OAuth.
+4. Crie credenciais OAuth 2.0 do tipo **Aplicativo para computador**.
+5. Antes de iniciar a aplicação, configure as variáveis `GOOGLE_CLIENT_ID` e
+   `GOOGLE_CLIENT_SECRET` com os valores fornecidos pelo Google.
+6. Abra **Configurações > Google Contacts**, conecte a conta e execute a sincronização.
+
+No Windows, os tokens são cifrados com DPAPI para o usuário atual e armazenados em
+`%LOCALAPPDATA%\WA-Delivery\google-tokens.bin`. Eles persistem entre execuções para evitar logins
+frequentes, não ficam no repositório e não são incluídos no backup `.wabkp`.
 
 ## Atualização
 

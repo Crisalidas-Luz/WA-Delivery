@@ -61,10 +61,12 @@ Concluído neste marco:
 - composição real no `app.ts` via `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`, usando DPAPI e arquivo
   em `%LOCALAPPDATA%/WA-Delivery`, portanto fora do backup;
 - testes de sessão, renovação, desconexão e rotas não configuradas/configuradas.
+- seção Google Contacts em Configurações com status, conta conectada, login, sincronização,
+  desconexão, feedback de progresso/erro e tutorial expansível;
+- documentação no README para criação das credenciais OAuth e localização/segurança dos tokens.
 
 Ainda pendente na Fase 1:
 
-- interface para conectar, sincronizar e desconectar;
 - adaptador seguro para Linux/WSL e tutorial de credenciais Google Cloud.
 
 ## Validações da última etapa
@@ -82,8 +84,8 @@ Ainda pendente na Fase 1:
 ## Próximo passo
 
 1. Fazer commit e push deste marco da Fase 1.
-2. Criar a interface de configuração/conexão Google e o tutorial Google Cloud.
-3. Implementar estratégia segura para Linux/WSL e concluir a Fase 1.
+2. Implementar estratégia segura para Linux/WSL e concluir a Fase 1.
+3. Iniciar Fase 2 com repositório de busca e compilador SQL dos filtros inteligentes.
 
 ## Decisões e cuidados ativos
 

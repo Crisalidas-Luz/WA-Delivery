@@ -75,6 +75,36 @@
         </form>
       </section>
 
+      <section class="card" id="google-contacts-card">
+        <div class="section-heading">
+          <div>
+            <h2>Google Contacts</h2>
+            <p id="google-description">Consulte o estado da integração com sua agenda.</p>
+          </div>
+          <span id="google-status" class="status-badge status-pending">Carregando</span>
+        </div>
+        <p id="google-account" hidden></p>
+        <p id="google-sync-status" class="notice" hidden></p>
+        <p id="google-error" class="error" hidden></p>
+        <p id="google-success" class="success" hidden></p>
+        <div class="actions">
+          <button id="google-connect" type="button" hidden>Conectar conta Google</button>
+          <button id="google-sync" type="button" hidden>Sincronizar contatos</button>
+          <button id="google-disconnect" class="danger" type="button" hidden>Desconectar Google</button>
+        </div>
+        <details class="setup-guide">
+          <summary>Como configurar o acesso ao Google Contacts</summary>
+          <ol>
+            <li>Abra o Google Cloud Console e crie ou selecione um projeto.</li>
+            <li>Ative a <strong>Google People API</strong>.</li>
+            <li>Configure a tela de consentimento OAuth para uso externo ou interno.</li>
+            <li>Crie credenciais OAuth do tipo <strong>Aplicativo para computador</strong>.</li>
+            <li>Defina <code>GOOGLE_CLIENT_ID</code> e <code>GOOGLE_CLIENT_SECRET</code> antes de iniciar o WA-Delivery.</li>
+          </ol>
+          <p>O token fica protegido neste computador e não é incluído no backup.</p>
+        </details>
+      </section>
+
       <section class="card">
         <h2>Limpeza por retenção</h2>
         <p>

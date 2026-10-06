@@ -83,6 +83,110 @@ form.addEventListener('submit', async (event) => {
 
 void load();
 
+const googleStatus = document.querySelector('#google-status');
+const googleDescription = document.querySelector('#google-description');
+const googleAccount = document.querySelector('#google-account');
+const googleSyncStatus = document.querySelector('#google-sync-status');
+const googleError = document.querySelector('#google-error');
+const googleSuccess = document.querySelector('#google-success');
+const googleConnect = document.querySelector('#google-connect');
+const googleSync = document.querySelector('#google-sync');
+const googleDisconnect = document.querySelector('#google-disconnect');
+
+function showGoogleError(message = '') {
+  googleError.textContent = message;
+  googleError.hidden = !message;
+  googleSuccess.hidden = true;
+}
+
+async function loadGoogleStatus() {
+  try {
+    const response = await fetch('/api/google/status');
+    if (!response.ok) throw new Error(`Falha HTTP ${response.status}`);
+    const state = await response.json();
+    googleStatus.textContent = !state.configured
+      ? 'Não configurado'
+      : state.connected
+        ? 'Conectado'
+        : 'Desconectado';
+    googleStatus.className = `status-badge ${state.connected ? 'status-sent' : 'status-pending'}`;
+    googleDescription.textContent = state.configured
+      ? 'A agenda Google é sincronizada para o banco local antes da seleção de campanhas.'
+      : 'Configure as credenciais locais seguindo o tutorial abaixo e reinicie a aplicação.';
+    googleConnect.hidden = !state.configured || state.connected;
+    googleSync.hidden = !state.connected;
+    googleDisconnect.hidden = !state.connected;
+    googleAccount.hidden = !state.account;
+    if (state.account) {
+      googleAccount.textContent = `${state.account.displayName} — ${state.account.email}`;
+    }
+    googleSyncStatus.hidden = !state.connected;
+    if (state.connected) {
+      googleSyncStatus.textContent = `Sincronização: ${state.sync.status}${state.sync.type ? ` (${state.sync.type})` : ''}.`;
+    }
+  } catch (error) {
+    showGoogleError(`Não foi possível consultar o Google Contacts: ${error.message}`);
+  }
+}
+
+googleConnect.addEventListener('click', async () => {
+  googleConnect.disabled = true;
+  showGoogleError();
+  try {
+    const response = await fetch('/api/google/oauth/start', { method: 'POST' });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.message || `Falha HTTP ${response.status}`);
+    location.href = body.authorizationUrl;
+  } catch (error) {
+    showGoogleError(`Não foi possível iniciar o login Google: ${error.message}`);
+    googleConnect.disabled = false;
+  }
+});
+
+googleSync.addEventListener('click', async () => {
+  googleSync.disabled = true;
+  showGoogleError();
+  googleSuccess.hidden = true;
+  try {
+    const response = await fetch('/api/google/sync', { method: 'POST' });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.message || `Falha HTTP ${response.status}`);
+    googleSuccess.textContent = `Sincronização concluída: ${body.created} novo(s), ${body.updated} atualizado(s) e ${body.deleted} removido(s).`;
+    googleSuccess.hidden = false;
+    await loadGoogleStatus();
+  } catch (error) {
+    showGoogleError(`Não foi possível sincronizar: ${error.message}`);
+  } finally {
+    googleSync.disabled = false;
+  }
+});
+
+googleDisconnect.addEventListener('click', async () => {
+  if (!confirm('Desconectar a conta Google deste computador? Os contatos já sincronizados permanecerão no histórico local.')) return;
+  googleDisconnect.disabled = true;
+  showGoogleError();
+  try {
+    const response = await fetch('/api/google/disconnect', { method: 'POST' });
+    if (!response.ok) {
+      const body = await response.json();
+      throw new Error(body.message || `Falha HTTP ${response.status}`);
+    }
+    await loadGoogleStatus();
+  } catch (error) {
+    showGoogleError(`Não foi possível desconectar: ${error.message}`);
+  } finally {
+    googleDisconnect.disabled = false;
+  }
+});
+
+if (new URLSearchParams(location.search).get('google') === 'connected') {
+  googleSuccess.textContent = 'Conta Google conectada. Sincronize os contatos para continuar.';
+  googleSuccess.hidden = false;
+  history.replaceState({}, '', '/settings.html');
+}
+
+void loadGoogleStatus();
+
 const cleanupButton = document.querySelector('#cleanup-button');
 const cleanupMessage = document.querySelector('#cleanup-message');
 const cleanupError = document.querySelector('#cleanup-error');
