@@ -1,4 +1,5 @@
 export const GOOGLE_CONTACTS_SCOPE = 'https://www.googleapis.com/auth/contacts';
+export const GOOGLE_IDENTITY_SCOPES = ['openid', 'email', 'profile'] as const;
 
 export interface GoogleOAuthStart {
   authorizationUrl: string;

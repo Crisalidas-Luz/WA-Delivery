@@ -49,10 +49,14 @@ Concluído neste marco:
 - armazenamento de tokens em arquivo protegido e gravado atomicamente fora do diretório de backup;
 - proteção Windows DPAPI no escopo do usuário atual, sem passar token em argumentos do processo;
 - testes de paginação, sync token expirado, telefone inválido e persistência/remoção de tokens.
+- cliente HTTP concreto da Google People API sem dependência adicional, com Authorization Code +
+  PKCE, state descartável/expirável, refresh, revogação, leitura e exclusão de contatos;
+- mapeamento defensivo da resposta `Person`, validação de `resourceName` e tradução de
+  `EXPIRED_SYNC_TOKEN` para o fallback do serviço;
+- testes do fluxo OAuth e do cliente People API com HTTP simulado.
 
 Ainda pendente na Fase 1:
 
-- implementação HTTP/OAuth concreta da Google People API;
 - serviço de sessão que combina conta, token store, refresh e revogação;
 - rotas e interface para conectar, sincronizar e desconectar;
 - adaptador seguro para Linux/WSL e tutorial de credenciais Google Cloud.
@@ -62,7 +66,7 @@ Ainda pendente na Fase 1:
 - `npm.cmd run typecheck`: passou.
 - `npm.cmd run lint`: passou.
 - `npm.cmd run format:check`: passou.
-- `npm.cmd test`: 141 testes passaram, 0 falharam.
+- `npm.cmd test`: 146 testes passaram, 0 falharam.
 - `npm.cmd run build`: passou.
 - Observação do ambiente: dentro do sandbox, o loader `tsx` falhou em `uv_os_get_passwd` com
   `ENOMEM`; a mesma suíte executada fora do sandbox passou integralmente.
