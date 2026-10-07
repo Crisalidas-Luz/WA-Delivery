@@ -10,7 +10,7 @@ pendências e próximo passo. Não substituir o plano completo de produto em `AG
 
 - Branch de desenvolvimento: `feat/google-contacts-campaign-flow`
 - Base: `main` no commit `cfc3881`
-- Etapa concluída: Fase 1 — OAuth e sincronização Google
+- Etapa em andamento: Fase 2 — filtros e seleção
 - Merge para `main`: proibido até validação integral e aprovação do usuário
 
 ## Progresso
@@ -70,12 +70,24 @@ Concluído neste marco:
 Fase 1 concluída. A validação com uma conta Google real permanece como QA manual dependente das
 credenciais do usuário; toda integração está atrás de contratos e coberta por HTTP/cofres simulados.
 
+### Fase 2 — filtros e seleção
+
+Concluído neste marco:
+
+- compilador da AST v1 para SQL parametrizado com allowlist de campos e operadores;
+- escaping explícito de curingas `LIKE`, composição `and`/`or` e consultas correlacionadas seguras
+  para telefones, labels, validade, duplicidade e opt-out;
+- repositório de busca paginada, limite de 100 registros por página, ordenação estável e escolha do
+  telefone principal;
+- busca em campos normalizados e em dados brutos preservados para campos ainda não materializados;
+- testes contra texto de injeção SQL, paginação, labels, telefone inválido e grupos aninhados.
+
 ## Validações da última etapa
 
 - `npm.cmd run typecheck`: passou.
 - `npm.cmd run lint`: passou.
 - `npm.cmd run format:check`: passou.
-- `npm.cmd test`: 152 testes passaram, 0 falharam.
+- `npm.cmd test`: 157 testes passaram, 0 falharam.
 - `npm.cmd run build`: passou.
 - Observação do ambiente: dentro do sandbox, o loader `tsx` falhou em `uv_os_get_passwd` com
   `ENOMEM`; a mesma suíte executada fora do sandbox passou integralmente.
@@ -84,9 +96,9 @@ credenciais do usuário; toda integração está atrás de contratos e coberta p
 
 ## Próximo passo
 
-1. Fazer commit e push da conclusão da Fase 1.
-2. Iniciar Fase 2 com repositório de busca e compilador SQL dos filtros inteligentes.
-3. Adicionar filtros salvos, paginação, deduplicação e exceções de seleção.
+1. Fazer commit e push deste marco da Fase 2.
+2. Expor a busca e o CRUD de filtros salvos por API.
+3. Implementar seleção global, inclusões/exclusões manuais e UI de filtros.
 
 ## Decisões e cuidados ativos
 
