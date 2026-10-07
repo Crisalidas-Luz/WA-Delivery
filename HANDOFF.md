@@ -117,12 +117,28 @@ Limitação conhecida desta primeira UI: ela edita um grupo raiz de regras. A AS
 grupos aninhados, mas o editor visual recursivo ainda precisa ser implementado antes de considerar a
 interface de filtros integralmente concluída.
 
+Fundação de campanhas Google e lotes (migration v11):
+
+- campanhas agora aceitam origem `local_list` ou `google`, sem exigir lista local para a agenda
+  Google;
+- definição do filtro, resumo, IDs resolvidos, inclusões/exclusões e instante de finalização da
+  seleção possuem campos persistentes;
+- tamanho do lote, intervalo entre lotes, ordem, seed, lote atual e próximo horário estão no schema;
+- snapshots aceitam vínculo Google, `resourceName`, telefone original/label, dados renderizáveis,
+  lote/posição, elegibilidade, resultado e recomendação de exclusão;
+- inelegíveis podem existir no manifesto com telefone nulo e `skipped`, enquanto um índice parcial
+  impede telefones elegíveis duplicados;
+- migration reconstrói de forma controlada as duas tabelas, verifica chaves estrangeiras antes do
+  commit e reativa `foreign_keys`; campanhas antigas recebem defaults compatíveis de lote único;
+- teste explícito cobre campanha Google sem lista, inelegível sem telefone, limites e manutenção das
+  chaves estrangeiras, além dos upgrades legados existentes.
+
 ## Validações da última etapa
 
 - `npm.cmd run typecheck`: passou.
 - `npm.cmd run lint`: passou.
 - `npm.cmd run format`: passou e normalizou os arquivos alterados.
-- `npm.cmd test`: 161 testes passaram, 0 falharam.
+- `npm.cmd test`: 162 testes passaram, 0 falharam.
 - `npm.cmd run build`: passou.
 - `node --check public/contacts.js`: passou.
 - Observação do ambiente: dentro do sandbox, o loader `tsx` falhou em `uv_os_get_passwd` com
@@ -132,9 +148,10 @@ interface de filtros integralmente concluída.
 
 ## Próximo passo
 
-1. Persistir a seleção reproduzível no rascunho da campanha e consumi-la no compositor.
+1. Integrar os novos campos ao domínio/repositório de campanhas e consumir a seleção Google no
+   simulador, rascunho e preparo do snapshot.
 2. Evoluir o editor visual para grupos `E`/`OU` aninhados sem perder ASTs já salvas.
-3. Continuar mantendo a Fase 2 isolada no branch até validação completa.
+3. Implementar execução persistente dos lotes sobre a fundação da migration v11.
 
 ## Decisões e cuidados ativos
 

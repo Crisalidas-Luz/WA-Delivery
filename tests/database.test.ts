@@ -47,6 +47,63 @@ describe('migrações do banco', () => {
     }
   });
 
+  it('cria campanhas Google sem lista local e preserva inelegíveis no snapshot', () => {
+    const database = openDatabase(':memory:');
+    try {
+      assert.equal(database.prepare('PRAGMA foreign_keys').get()?.foreign_keys, 1);
+      const campaignId = Number(
+        database
+          .prepare(
+            `INSERT INTO campaigns (
+              name, contact_list_id, message_template, delay_min_seconds, delay_max_seconds,
+              selection_source, selection_filter_json, selection_resolved_ids_json,
+              batch_size, batch_interval_seconds, batch_order
+            ) VALUES ('Google', NULL, 'Olá {{nome}}', 5, 10, 'google', '{}', '[1]', 50, 3600, 'name')`,
+          )
+          .run().lastInsertRowid,
+      );
+      database
+        .prepare(
+          `INSERT INTO campaign_recipients (
+            campaign_id, source_contact_id, google_contact_id, resource_name_snapshot,
+            name, phone, phone_original, rendered_message, batch_number, position_in_batch,
+            eligibility_status, status
+          ) VALUES (?, NULL, NULL, 'people/removed', 'Sem telefone', NULL, NULL, '', 1, 1,
+            'missing_phone', 'skipped')`,
+        )
+        .run(campaignId);
+      const row = database
+        .prepare(
+          `SELECT campaigns.selection_source, campaigns.batch_size,
+            campaign_recipients.eligibility_status, campaign_recipients.phone
+           FROM campaigns JOIN campaign_recipients
+             ON campaign_recipients.campaign_id = campaigns.id
+           WHERE campaigns.id = ?`,
+        )
+        .get(campaignId) as {
+        selection_source: string;
+        batch_size: number;
+        eligibility_status: string;
+        phone: null;
+      };
+      assert.equal(row.selection_source, 'google');
+      assert.equal(row.batch_size, 50);
+      assert.equal(row.eligibility_status, 'missing_phone');
+      assert.equal(row.phone, null);
+      assert.throws(() =>
+        database
+          .prepare(
+            `INSERT INTO campaigns
+              (name, message_template, delay_min_seconds, delay_max_seconds, batch_size)
+             VALUES ('Inválida', 'x', 1, 1, 101)`,
+          )
+          .run(),
+      );
+    } finally {
+      database.close();
+    }
+  });
+
   it('aplica a versão 5 sobre uma campanha preparada com destinatários', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'wa-delivery-migration-'));
     const filename = join(directory, 'v4.db');

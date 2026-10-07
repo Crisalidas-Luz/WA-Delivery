@@ -30,14 +30,27 @@ function migrate(database: DatabaseSync): void {
   for (const migration of migrations) {
     if (appliedVersions.has(migration.version)) continue;
 
+    if ('disableForeignKeys' in migration && migration.disableForeignKeys) {
+      database.exec('PRAGMA foreign_keys = OFF');
+    }
     database.exec('BEGIN IMMEDIATE');
     try {
-      database.exec(migration.sql);
+      if ('sql' in migration && migration.sql) database.exec(migration.sql);
+      if ('run' in migration && migration.run) migration.run(database);
       database.prepare('INSERT INTO schema_migrations (version) VALUES (?)').run(migration.version);
+      if ('disableForeignKeys' in migration && migration.disableForeignKeys) {
+        const violation = database.prepare('PRAGMA foreign_key_check').get();
+        if (violation)
+          throw new Error(`A migration ${migration.version} violou uma chave estrangeira.`);
+      }
       database.exec('COMMIT');
     } catch (error) {
       database.exec('ROLLBACK');
       throw error;
+    } finally {
+      if ('disableForeignKeys' in migration && migration.disableForeignKeys) {
+        database.exec('PRAGMA foreign_keys = ON');
+      }
     }
   }
 }
@@ -330,7 +343,190 @@ const migrations = [
         ON contact_deletion_items(job_id, status, id);
     `,
   },
+  {
+    version: 11,
+    disableForeignKeys: true,
+    run: migrateCampaignFlowV11,
+  },
 ] as const;
+
+function migrateCampaignFlowV11(database: DatabaseSync): void {
+  const campaignColumns = tableColumns(database, 'campaigns');
+  database.exec(`
+    CREATE TABLE campaigns_v11 (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      contact_list_id INTEGER REFERENCES contact_lists(id) ON DELETE RESTRICT,
+      message_template TEXT NOT NULL,
+      delay_min_seconds INTEGER NOT NULL,
+      delay_max_seconds INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft', 'ready', 'running', 'paused', 'completed', 'cancelled', 'failed')),
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      media_id INTEGER REFERENCES media(id) ON DELETE SET NULL,
+      prepared_at TEXT,
+      started_at TEXT,
+      finished_at TEXT,
+      source_campaign_id INTEGER REFERENCES campaigns_v11(id) ON DELETE SET NULL,
+      selection_source TEXT NOT NULL DEFAULT 'local_list'
+        CHECK (selection_source IN ('local_list', 'google')),
+      selection_filter_json TEXT,
+      selection_summary_json TEXT,
+      selection_resolved_ids_json TEXT,
+      selection_included_ids_json TEXT,
+      selection_excluded_ids_json TEXT,
+      selection_finalized_at TEXT,
+      batch_size INTEGER NOT NULL DEFAULT 100 CHECK (batch_size BETWEEN 1 AND 100),
+      batch_interval_seconds INTEGER NOT NULL DEFAULT 0
+        CHECK (batch_interval_seconds BETWEEN 0 AND 172800),
+      batch_order TEXT NOT NULL DEFAULT 'name'
+        CHECK (batch_order IN ('name', 'google', 'random')),
+      batch_order_seed TEXT,
+      current_batch_number INTEGER NOT NULL DEFAULT 1 CHECK (current_batch_number >= 1),
+      next_batch_at TEXT
+    );
+  `);
+  if (campaignColumns.size > 0) {
+    const names = [
+      'id',
+      'name',
+      'contact_list_id',
+      'message_template',
+      'delay_min_seconds',
+      'delay_max_seconds',
+      'status',
+      'created_at',
+      'updated_at',
+      'media_id',
+      'prepared_at',
+      'started_at',
+      'finished_at',
+      'source_campaign_id',
+    ];
+    const fallbacks: Record<string, string> = {
+      id: 'rowid',
+      name: "''",
+      contact_list_id: 'NULL',
+      message_template: "''",
+      delay_min_seconds: '1',
+      delay_max_seconds: '1',
+      status: "'draft'",
+      created_at: 'CURRENT_TIMESTAMP',
+      updated_at: 'CURRENT_TIMESTAMP',
+      media_id: 'NULL',
+      prepared_at: 'NULL',
+      started_at: 'NULL',
+      finished_at: 'NULL',
+      source_campaign_id: 'NULL',
+    };
+    database.exec(
+      `INSERT INTO campaigns_v11 (${names.join(', ')}) SELECT ${names
+        .map((name) => (campaignColumns.has(name) ? name : fallbacks[name]))
+        .join(', ')} FROM campaigns`,
+    );
+    database.exec('DROP TABLE campaigns');
+  }
+  database.exec(`
+    ALTER TABLE campaigns_v11 RENAME TO campaigns;
+    CREATE INDEX idx_campaigns_contact_list ON campaigns(contact_list_id);
+    CREATE INDEX idx_campaigns_status ON campaigns(status);
+    CREATE INDEX idx_campaigns_source ON campaigns(source_campaign_id);
+  `);
+
+  const recipientColumns = tableColumns(database, 'campaign_recipients');
+  database.exec(`
+    CREATE TABLE campaign_recipients_v11 (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+      source_contact_id INTEGER,
+      google_contact_id INTEGER REFERENCES google_contacts(id) ON DELETE SET NULL,
+      resource_name_snapshot TEXT,
+      name TEXT NOT NULL,
+      phone TEXT,
+      phone_original TEXT,
+      phone_label TEXT,
+      render_data_json TEXT NOT NULL DEFAULT '{}',
+      rendered_message TEXT NOT NULL,
+      batch_number INTEGER NOT NULL DEFAULT 1 CHECK (batch_number >= 1),
+      position_in_batch INTEGER NOT NULL DEFAULT 1 CHECK (position_in_batch >= 1),
+      eligibility_status TEXT NOT NULL DEFAULT 'eligible' CHECK (eligibility_status IN (
+        'eligible', 'missing_phone', 'invalid_phone', 'duplicate_phone', 'opted_out',
+        'not_on_whatsapp', 'stale_google_contact', 'unknown'
+      )),
+      result_code TEXT,
+      result_reason TEXT,
+      deletion_recommendation TEXT NOT NULL DEFAULT 'not_recommended'
+        CHECK (deletion_recommendation IN ('recommended', 'review', 'not_recommended')),
+      deletion_reason_code TEXT,
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'sending', 'sent', 'failed', 'skipped')),
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      attempt_count INTEGER NOT NULL DEFAULT 0,
+      message_id TEXT,
+      sent_at TEXT,
+      last_error TEXT,
+      updated_at TEXT
+    );
+  `);
+  if (recipientColumns.size > 0) {
+    const names = [
+      'id',
+      'campaign_id',
+      'source_contact_id',
+      'name',
+      'phone',
+      'rendered_message',
+      'status',
+      'created_at',
+      'attempt_count',
+      'message_id',
+      'sent_at',
+      'last_error',
+      'updated_at',
+    ];
+    const fallbacks: Record<string, string> = {
+      id: 'rowid',
+      campaign_id: '0',
+      source_contact_id: 'NULL',
+      name: "''",
+      phone: 'NULL',
+      rendered_message: "''",
+      status: "'pending'",
+      created_at: 'CURRENT_TIMESTAMP',
+      attempt_count: '0',
+      message_id: 'NULL',
+      sent_at: 'NULL',
+      last_error: 'NULL',
+      updated_at: 'CURRENT_TIMESTAMP',
+    };
+    database.exec(
+      `INSERT INTO campaign_recipients_v11 (${names.join(', ')}) SELECT ${names
+        .map((name) => (recipientColumns.has(name) ? name : fallbacks[name]))
+        .join(', ')} FROM campaign_recipients`,
+    );
+    database.exec('DROP TABLE campaign_recipients');
+  }
+  database.exec(`
+    ALTER TABLE campaign_recipients_v11 RENAME TO campaign_recipients;
+    CREATE INDEX idx_campaign_recipients_campaign_status
+      ON campaign_recipients(campaign_id, status);
+    CREATE INDEX idx_campaign_recipients_batch
+      ON campaign_recipients(campaign_id, batch_number, position_in_batch);
+    CREATE UNIQUE INDEX idx_campaign_recipients_eligible_phone
+      ON campaign_recipients(campaign_id, phone)
+      WHERE eligibility_status = 'eligible' AND phone IS NOT NULL;
+  `);
+}
+
+function tableColumns(database: DatabaseSync, table: string): Set<string> {
+  return new Set(
+    database
+      .prepare(`PRAGMA table_info(${table})`)
+      .all()
+      .map((row) => String(row.name)),
+  );
+}
 
 /** Versão de schema mais recente conhecida (maior versão de migration). */
 export const LATEST_SCHEMA_VERSION = migrations.reduce(
