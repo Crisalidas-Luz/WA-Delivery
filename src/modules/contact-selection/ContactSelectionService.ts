@@ -1,6 +1,7 @@
 import {
   ContactSelectionRepository,
   type ContactSearchInput,
+  type ContactSearchItem,
   type ContactSearchResult,
   type SavedContactFilter,
 } from './ContactSelectionRepository.js';
@@ -65,35 +66,32 @@ export class ContactSelectionService {
     const filter = validateContactFilter(input.filter);
     const includedIds = validIds(input.includedIds);
     const excludedIds = new Set(validIds(input.excludedIds));
-    const selected = new Map<number, ReturnType<ContactSelectionRepository['search']>['items'][number]>();
+    const selected = new Map<number, ContactSearchItem>();
     if (input.selectAllMatching === true) {
       let page = 1;
       let result;
       do {
-        result = this.repository.search({ filter, page, pageSize: 100, order: input.order ?? 'name' });
+        result = this.repository.search({
+          filter,
+          page,
+          pageSize: 100,
+          order: input.order ?? 'name',
+        });
         for (const item of result.items) selected.set(item.id, item);
         page += 1;
       } while (selected.size < result.total);
     }
     if (includedIds.length > 0) {
-      const includeFilter = {
-        version: 1,
-        root: {
-          type: 'group',
-          combinator: 'or',
-          children: includedIds.map((id) => ({
-            type: 'rule',
-            field: 'resourceId',
-            operator: 'equals',
-            value: String(id),
-          })),
-        },
-      };
       for (const item of this.repository.searchByIds(includedIds)) selected.set(item.id, item);
-      void includeFilter;
     }
     for (const id of excludedIds) selected.delete(id);
-    const items = [...selected.values()];
+    const items = [...selected.values()].sort(
+      input.order === 'google'
+        ? (left, right) => left.id - right.id
+        : (left, right) =>
+            left.displayName.localeCompare(right.displayName, 'pt-BR', { sensitivity: 'base' }) ||
+            left.id - right.id,
+    );
     const summary = {
       selected: items.length,
       eligible: 0,
@@ -102,12 +100,16 @@ export class ContactSelectionService {
       duplicatePhone: 0,
       optedOut: 0,
     };
+    const selectedPhones = new Set<string>();
     for (const item of items) {
       if (item.optedOut) summary.optedOut += 1;
       else if (!item.phone) summary.missingPhone += 1;
       else if (!item.phoneValid) summary.invalidPhone += 1;
-      else if (item.duplicatePhone) summary.duplicatePhone += 1;
-      else summary.eligible += 1;
+      else if (selectedPhones.has(item.phone)) summary.duplicatePhone += 1;
+      else {
+        selectedPhones.add(item.phone);
+        summary.eligible += 1;
+      }
     }
     return {
       definition: {

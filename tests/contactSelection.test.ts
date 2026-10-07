@@ -147,6 +147,73 @@ describe('ContactSelectionRepository', () => {
 });
 
 describe('filtros salvos e API de seleção', () => {
+  it('resolve todos os resultados com inclusões e exclusões manuais de forma reproduzível', () => {
+    const { database, repository } = setup();
+    try {
+      const service = new ContactSelectionService(repository);
+      const ana = repository.search({ filter: filter('displayName', 'contains', 'ana') }).items[0];
+      const bruno = repository.search({ filter: filter('displayName', 'contains', 'bruno') })
+        .items[0];
+      assert.ok(ana);
+      assert.ok(bruno);
+
+      const resolved = service.resolveSelection({
+        filter: filter('displayName', 'contains', 'ana'),
+        selectAllMatching: true,
+        includedIds: [bruno.id, bruno.id, 999_999],
+        excludedIds: [ana.id],
+      });
+
+      assert.deepEqual(resolved.contactIds, [bruno.id]);
+      assert.deepEqual(resolved.definition.includedIds, [bruno.id, 999_999]);
+      assert.deepEqual(resolved.definition.excludedIds, [ana.id]);
+      assert.deepEqual(resolved.summary, {
+        selected: 1,
+        eligible: 0,
+        missingPhone: 1,
+        invalidPhone: 0,
+        duplicatePhone: 0,
+        optedOut: 0,
+      });
+    } finally {
+      database.close();
+    }
+  });
+
+  it('classifica deterministicamente telefones duplicados apenas dentro da seleção', () => {
+    const { database, repository } = setup();
+    try {
+      const ana = repository.search({ filter: filter('displayName', 'contains', 'ana') }).items[0];
+      assert.ok(ana?.phone);
+      const duplicateId = Number(
+        database
+          .prepare(
+            `INSERT INTO google_contacts
+              (account_id, resource_name, display_name, given_name, raw_json)
+             VALUES (1, 'people/3', 'Zélia Duplicada', 'Zélia', '{}')`,
+          )
+          .run().lastInsertRowid,
+      );
+      database
+        .prepare(
+          `INSERT INTO google_contact_phones
+            (google_contact_id, label, raw_value, normalized_phone, is_primary, is_valid)
+           VALUES (?, 'Celular', ?, ?, 1, 1)`,
+        )
+        .run(duplicateId, ana.phone, ana.phone);
+
+      const resolved = new ContactSelectionService(repository).resolveSelection({
+        filter: filter('phone', 'equals', ana.phone),
+        selectAllMatching: true,
+      });
+      assert.equal(resolved.summary.eligible, 1);
+      assert.equal(resolved.summary.duplicatePhone, 1);
+      assert.deepEqual(resolved.contactIds, [ana.id, duplicateId]);
+    } finally {
+      database.close();
+    }
+  });
+
   it('cria, edita, lista e exclui filtros salvos', () => {
     const { database, repository } = setup();
     try {
@@ -181,6 +248,17 @@ describe('filtros salvos e API de seleção', () => {
       });
       assert.equal(search.statusCode, 200);
       assert.equal(search.json().total, 1);
+
+      const resolved = await server.inject({
+        method: 'POST',
+        url: '/api/contacts/resolve-selection',
+        payload: {
+          filter: filter('displayName', 'contains', 'ana'),
+          selectAllMatching: true,
+        },
+      });
+      assert.equal(resolved.statusCode, 200);
+      assert.equal(resolved.json().summary.eligible, 1);
 
       const invalid = await server.inject({
         method: 'POST',

@@ -96,22 +96,25 @@ export class ContactSelectionRepository {
       duplicate_phone: number;
     }>;
     return {
-      items: rows.map((row) => ({
-        id: row.id,
-        resourceName: row.resource_name,
-        displayName: row.display_name,
-        ...(row.phone ? { phone: row.phone } : {}),
-        ...(row.phone_label ? { phoneLabel: row.phone_label } : {}),
-        phoneValid: row.phone_valid === 1,
-        labels: row.labels ? row.labels.split(String.fromCharCode(31)) : [],
-        remoteDeleted: row.remote_deleted === 1,
-        optedOut: row.opted_out === 1,
-        duplicatePhone: row.duplicate_phone === 1,
-      })),
+      items: rows.map(toSearchItem),
       total,
       page,
       pageSize,
     };
+  }
+
+  public searchByIds(ids: number[]): ContactSearchItem[] {
+    if (ids.length === 0) return [];
+    const placeholders = ids.map(() => '?').join(', ');
+    const rows = this.database
+      .prepare(
+        `${contactSelectSql}
+         FROM google_contacts gc
+         WHERE gc.account_id = 1 AND gc.remote_deleted = 0 AND gc.id IN (${placeholders})
+         ORDER BY gc.id ASC`,
+      )
+      .all(...ids) as unknown as ContactSearchRow[];
+    return rows.map(toSearchItem);
   }
 
   public listSavedFilters(): SavedContactFilter[] {
@@ -161,6 +164,61 @@ export class ContactSelectionRepository {
       this.database.prepare('DELETE FROM saved_contact_filters WHERE id = ?').run(id).changes > 0
     );
   }
+}
+
+const contactSelectSql = `SELECT gc.id, gc.resource_name, gc.display_name, gc.remote_deleted,
+  (SELECT normalized_phone FROM google_contact_phones primary_phone
+   WHERE primary_phone.google_contact_id = gc.id
+   ORDER BY primary_phone.is_primary DESC, primary_phone.is_valid DESC, primary_phone.id
+   LIMIT 1) AS phone,
+  (SELECT label FROM google_contact_phones primary_phone
+   WHERE primary_phone.google_contact_id = gc.id
+   ORDER BY primary_phone.is_primary DESC, primary_phone.is_valid DESC, primary_phone.id
+   LIMIT 1) AS phone_label,
+  (SELECT is_valid FROM google_contact_phones primary_phone
+   WHERE primary_phone.google_contact_id = gc.id
+   ORDER BY primary_phone.is_primary DESC, primary_phone.is_valid DESC, primary_phone.id
+   LIMIT 1) AS phone_valid,
+  (SELECT GROUP_CONCAT(name, char(31)) FROM google_contact_labels labels
+   WHERE labels.google_contact_id = gc.id) AS labels,
+  EXISTS (SELECT 1 FROM google_contact_phones own_phone
+    JOIN contacts local_contact ON local_contact.normalized_phone = own_phone.normalized_phone
+    WHERE own_phone.google_contact_id = gc.id AND local_contact.opted_out = 1) AS opted_out,
+  (SELECT COUNT(*) FROM google_contact_phones duplicate_phone
+    WHERE duplicate_phone.normalized_phone IS NOT NULL
+      AND duplicate_phone.normalized_phone = (
+        SELECT normalized_phone FROM google_contact_phones primary_phone
+        WHERE primary_phone.google_contact_id = gc.id
+        ORDER BY primary_phone.is_primary DESC, primary_phone.is_valid DESC, primary_phone.id
+        LIMIT 1
+      )) > 1 AS duplicate_phone`;
+
+interface ContactSearchRow {
+  id: number;
+  resource_name: string;
+  display_name: string;
+  remote_deleted: number;
+  phone: string | null;
+  phone_label: string | null;
+  phone_valid: number | null;
+  labels: string | null;
+  opted_out: number;
+  duplicate_phone: number;
+}
+
+function toSearchItem(row: ContactSearchRow): ContactSearchItem {
+  return {
+    id: row.id,
+    resourceName: row.resource_name,
+    displayName: row.display_name,
+    ...(row.phone ? { phone: row.phone } : {}),
+    ...(row.phone_label ? { phoneLabel: row.phone_label } : {}),
+    phoneValid: row.phone_valid === 1,
+    labels: row.labels ? row.labels.split(String.fromCharCode(31)) : [],
+    remoteDeleted: row.remote_deleted === 1,
+    optedOut: row.opted_out === 1,
+    duplicatePhone: row.duplicate_phone === 1,
+  };
 }
 
 interface SavedFilterRow {
