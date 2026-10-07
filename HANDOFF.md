@@ -115,3 +115,12 @@ Bloco de API concluído após o marco `fe1cde1`:
 - Exclusão Google nunca é automática.
 - Falha transitória de envio não constitui evidência de contato inválido.
 - A aplicação não deve retomar disparos silenciosamente após reinício.
+# Atualização de encerramento — 2026-10-07
+
+- Branch de desenvolvimento: `feat/google-contacts-campaign-flow`.
+- Último commit publicado antes desta sessão: `756f473` (`feat: expose contact search and saved filters API`).
+- Fase atual: seleção global de contatos (selecionar todos os resultados e aplicar inclusões/exclusões manuais).
+- Alterações locais ainda em andamento: `ContactSelectionRepository.ts`, `ContactSelectionService.ts` e `contactSelectionRoutes.ts`.
+- Essas alterações iniciam a resolução persistível da seleção e acrescentam indicadores de opt-out/telefone duplicado, mas precisam ser revisadas e testadas antes de um commit funcional: o serviço passou a depender de `ContactSelectionRepository.searchByIds`, que ainda precisa ser implementado, e deve ser removido um filtro auxiliar baseado no campo não suportado `resourceId`.
+- Próxima ação: concluir `searchByIds`, simplificar os tipos do serviço, criar testes para seleção global/inclusões/exclusões/resumo de elegibilidade e validar `format`, `typecheck`, `lint`, `build` e a suíte completa.
+- Não fazer merge na `main` até o fluxo completo ser testado e aprovado pelo usuário.

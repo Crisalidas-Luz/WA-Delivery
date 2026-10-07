@@ -18,6 +18,8 @@ export interface ContactSearchItem {
   phoneValid: boolean;
   labels: string[];
   remoteDeleted: boolean;
+  optedOut: boolean;
+  duplicatePhone: boolean;
 }
 
 export interface ContactSearchResult {
@@ -66,7 +68,18 @@ export class ContactSelectionRepository {
            ORDER BY primary_phone.is_primary DESC, primary_phone.is_valid DESC, primary_phone.id
            LIMIT 1) AS phone_valid,
           (SELECT GROUP_CONCAT(name, char(31)) FROM google_contact_labels labels
-           WHERE labels.google_contact_id = gc.id) AS labels
+           WHERE labels.google_contact_id = gc.id) AS labels,
+          EXISTS (SELECT 1 FROM google_contact_phones own_phone
+            JOIN contacts local_contact ON local_contact.normalized_phone = own_phone.normalized_phone
+            WHERE own_phone.google_contact_id = gc.id AND local_contact.opted_out = 1) AS opted_out,
+          (SELECT COUNT(*) FROM google_contact_phones duplicate_phone
+            WHERE duplicate_phone.normalized_phone IS NOT NULL
+              AND duplicate_phone.normalized_phone = (
+                SELECT normalized_phone FROM google_contact_phones primary_phone
+                WHERE primary_phone.google_contact_id = gc.id
+                ORDER BY primary_phone.is_primary DESC, primary_phone.is_valid DESC, primary_phone.id
+                LIMIT 1
+              )) > 1 AS duplicate_phone
          FROM google_contacts gc WHERE ${where}
          ORDER BY ${order} LIMIT ? OFFSET ?`,
       )
@@ -79,6 +92,8 @@ export class ContactSelectionRepository {
       phone_label: string | null;
       phone_valid: number | null;
       labels: string | null;
+      opted_out: number;
+      duplicate_phone: number;
     }>;
     return {
       items: rows.map((row) => ({
@@ -90,6 +105,8 @@ export class ContactSelectionRepository {
         phoneValid: row.phone_valid === 1,
         labels: row.labels ? row.labels.split(String.fromCharCode(31)) : [],
         remoteDeleted: row.remote_deleted === 1,
+        optedOut: row.opted_out === 1,
+        duplicatePhone: row.duplicate_phone === 1,
       })),
       total,
       page,

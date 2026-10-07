@@ -27,6 +27,23 @@ export function registerContactSelectionRoutes(
     return { items: selection.listSavedFilters() };
   });
 
+  server.post<{
+    Body: {
+      filter?: unknown;
+      selectAllMatching?: boolean;
+      includedIds?: unknown;
+      excludedIds?: unknown;
+      order?: 'name' | 'google';
+    };
+  }>('/api/contacts/resolve-selection', async (request, reply) => {
+    if (!selection) return unavailable(reply);
+    try {
+      return selection.resolveSelection(request.body ?? {});
+    } catch (error) {
+      return selectionError(reply, error);
+    }
+  });
+
   server.post<{ Body: { name?: string; definition?: unknown } }>(
     '/api/contact-filters',
     async (request, reply) => {
