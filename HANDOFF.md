@@ -102,6 +102,21 @@ Bloco de seleção global concluído após o checkpoint `32327fc`:
 - rota `POST /api/contacts/resolve-selection` e testes de serviço/API para exceções manuais,
   duplicidade e IDs inexistentes.
 
+Bloco inicial da interface Google Contacts:
+
+- nova aba principal de Google Contacts na página de contatos, preservando CSV e cadastro manual;
+- construtor visual de regras com combinação `E`/`OU`, todos os campos e operadores atualmente
+  aceitos pelo backend;
+- carregar, salvar e excluir filtros; pesquisa paginada e situação do telefone por contato;
+- seleção individual ou de todos os resultados do filtro, incluindo exceções entre páginas;
+- resumo de elegibilidade atualizado pela resolução autoritativa do backend;
+- passagem temporária da seleção resolvida ao compositor via `sessionStorage`; a persistência no
+  rascunho ainda é o próximo bloco obrigatório.
+
+Limitação conhecida desta primeira UI: ela edita um grupo raiz de regras. A AST/backend já aceita
+grupos aninhados, mas o editor visual recursivo ainda precisa ser implementado antes de considerar a
+interface de filtros integralmente concluída.
+
 ## Validações da última etapa
 
 - `npm.cmd run typecheck`: passou.
@@ -109,6 +124,7 @@ Bloco de seleção global concluído após o checkpoint `32327fc`:
 - `npm.cmd run format`: passou e normalizou os arquivos alterados.
 - `npm.cmd test`: 161 testes passaram, 0 falharam.
 - `npm.cmd run build`: passou.
+- `node --check public/contacts.js`: passou.
 - Observação do ambiente: dentro do sandbox, o loader `tsx` falhou em `uv_os_get_passwd` com
   `ENOMEM`; a mesma suíte executada fora do sandbox passou integralmente.
 - `npm ci` reportou uma vulnerabilidade de severidade alta em dependência; ainda precisa ser
@@ -116,8 +132,8 @@ Bloco de seleção global concluído após o checkpoint `32327fc`:
 
 ## Próximo passo
 
-1. Implementar a UI de pesquisa, filtros salvos e seleção global/individual.
-2. Persistir a seleção reproduzível no rascunho da campanha.
+1. Persistir a seleção reproduzível no rascunho da campanha e consumi-la no compositor.
+2. Evoluir o editor visual para grupos `E`/`OU` aninhados sem perder ASTs já salvas.
 3. Continuar mantendo a Fase 2 isolada no branch até validação completa.
 
 ## Decisões e cuidados ativos

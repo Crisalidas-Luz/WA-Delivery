@@ -12,21 +12,138 @@
     <main class="container wide">
       <header>
         <span class="eyebrow">WA-Delivery V2</span>
-        <nav><a href="/">WhatsApp</a><a class="active" href="/contacts.html">Contatos</a><a href="/campaigns.html">Campanhas</a><a href="/monitor.html">Monitoramento</a><a href="/settings.html">Configurações</a></nav>
+        <nav>
+          <a href="/">WhatsApp</a><a class="active" href="/contacts.html">Contatos</a
+          ><a href="/campaigns.html">Campanhas</a><a href="/monitor.html">Monitoramento</a
+          ><a href="/settings.html">Configurações</a>
+        </nav>
         <h1>Contatos</h1>
-        <p>Crie uma lista digitando os contatos ou importe um arquivo CSV.</p>
+        <p>Pesquise sua agenda Google ou mantenha listas por CSV e cadastro manual.</p>
       </header>
 
-      <div class="tabs" role="tablist" aria-label="Como adicionar contatos">
-        <button id="tab-import" class="tab active" type="button" role="tab" aria-selected="true" aria-controls="panel-import">Importar CSV</button>
-        <button id="tab-manual" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panel-manual">Adicionar manualmente</button>
+      <div class="tabs" role="tablist" aria-label="Origem dos contatos">
+        <button
+          id="tab-google"
+          class="tab active"
+          type="button"
+          role="tab"
+          aria-selected="true"
+          aria-controls="panel-google"
+        >
+          Google Contacts
+        </button>
+        <button
+          id="tab-import"
+          class="tab"
+          type="button"
+          role="tab"
+          aria-selected="false"
+          aria-controls="panel-import"
+        >
+          Importar CSV
+        </button>
+        <button
+          id="tab-manual"
+          class="tab"
+          type="button"
+          role="tab"
+          aria-selected="false"
+          aria-controls="panel-manual"
+        >
+          Adicionar manualmente
+        </button>
       </div>
 
-      <section id="panel-import" class="card import-card" role="tabpanel" aria-labelledby="tab-import">
+      <section id="panel-google" class="card" role="tabpanel" aria-labelledby="tab-google">
+        <div class="section-heading">
+          <div>
+            <h2>Agenda Google</h2>
+            <p id="google-contact-status">Consultando a conexão e a agenda local...</p>
+          </div>
+          <a class="button-link" href="/settings.html#google-contacts">Configurar Google</a>
+        </div>
+
+        <div class="filter-toolbar">
+          <label
+            >Filtro salvo
+            <select id="saved-filter">
+              <option value="">Filtro atual (não salvo)</option>
+            </select>
+          </label>
+          <button id="load-filter" class="secondary" type="button">Carregar</button>
+          <button id="delete-filter" class="danger" type="button">Excluir filtro</button>
+        </div>
+
+        <fieldset class="filter-builder">
+          <legend>Filtros inteligentes</legend>
+          <label
+            >Combinar regras
+            <select id="filter-combinator">
+              <option value="and">Todas (E)</option>
+              <option value="or">Qualquer uma (OU)</option>
+            </select>
+          </label>
+          <div id="filter-rules" class="filter-rules"></div>
+          <div class="actions compact-actions">
+            <button id="add-filter-rule" class="secondary" type="button">Adicionar regra</button>
+            <button id="apply-contact-filter" type="button">Pesquisar</button>
+          </div>
+        </fieldset>
+
+        <div class="filter-save-row">
+          <label
+            >Nome para salvar este filtro
+            <input id="filter-name" maxlength="100" placeholder="Ex.: Clientes VIP de São Paulo" />
+          </label>
+          <button id="save-filter" class="secondary" type="button">Salvar filtro</button>
+        </div>
+        <p id="google-contact-error" class="error" role="alert" hidden></p>
+
+        <div id="contact-selection-summary" class="analysis-cards" aria-live="polite"></div>
+        <label class="confirmation-check selection-all">
+          <input id="select-all-matching" type="checkbox" />
+          Selecionar todos os resultados deste filtro, inclusive outras páginas
+        </label>
+        <div class="table-scroll contact-search-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Selecionar</th>
+                <th>Nome</th>
+                <th>Telefone</th>
+                <th>Labels</th>
+                <th>Situação</th>
+              </tr>
+            </thead>
+            <tbody id="google-contact-results">
+              <tr>
+                <td colspan="5">Carregando...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="pagination-actions">
+          <button id="previous-contact-page" class="secondary" type="button">Anterior</button>
+          <span id="contact-page-label">Página 1</span>
+          <button id="next-contact-page" class="secondary" type="button">Próxima</button>
+        </div>
+        <div class="actions">
+          <button id="use-contact-selection" type="button">Usar seleção em uma campanha</button>
+        </div>
+      </section>
+
+      <section
+        id="panel-import"
+        class="card import-card"
+        role="tabpanel"
+        aria-labelledby="tab-import"
+        hidden
+      >
         <h2>Importar arquivo CSV</h2>
         <p>O arquivo será analisado antes de qualquer contato ser salvo.</p>
         <form id="csv-upload-form" class="upload-form">
-          <label for="csv-file">Arquivo CSV
+          <label for="csv-file"
+            >Arquivo CSV
             <input id="csv-file" type="file" accept=".csv,text/csv" required />
           </label>
           <button type="submit">Analisar arquivo</button>
@@ -40,16 +157,21 @@
             <label>Coluna do nome (opcional)<select id="name-column"></select></label>
           </div>
           <div class="table-scroll"><table id="preview-table"></table></div>
-          <div class="actions"><button id="analyze-mapping" type="button">Validar contatos</button></div>
+          <div class="actions">
+            <button id="analyze-mapping" type="button">Validar contatos</button>
+          </div>
         </div>
 
         <div id="csv-analysis" hidden>
           <div id="analysis-cards" class="analysis-cards"></div>
           <div class="table-scroll"><table id="analysis-table"></table></div>
-          <label for="import-list-name">Nome da nova lista
+          <label for="import-list-name"
+            >Nome da nova lista
             <input id="import-list-name" placeholder="Ex.: Clientes importados" />
           </label>
-          <div class="actions"><button id="confirm-import" type="button">Salvar contatos válidos</button></div>
+          <div class="actions">
+            <button id="confirm-import" type="button">Salvar contatos válidos</button>
+          </div>
         </div>
       </section>
 
@@ -61,7 +183,10 @@
           <input id="list-name" name="name" placeholder="Ex.: Clientes setembro" required />
 
           <div class="section-heading">
-            <div><strong>Contatos da lista</strong><p>Informe nome, DDD e telefone.</p></div>
+            <div>
+              <strong>Contatos da lista</strong>
+              <p>Informe nome, DDD e telefone.</p>
+            </div>
             <button id="add-contact" class="secondary" type="button">Adicionar contato</button>
           </div>
 
@@ -77,7 +202,10 @@
       </section>
     </main>
     <footer class="app-footer">
-      WA-Delivery V2 — <a href="https://github.com/dudushy/WA-Delivery" target="_blank" rel="noopener">github.com/dudushy/WA-Delivery</a>
+      WA-Delivery V2 —
+      <a href="https://github.com/dudushy/WA-Delivery" target="_blank" rel="noopener"
+        >github.com/dudushy/WA-Delivery</a
+      >
     </footer>
   </body>
 </html>
