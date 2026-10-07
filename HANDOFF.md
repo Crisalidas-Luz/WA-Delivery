@@ -82,12 +82,20 @@ Concluído neste marco:
 - busca em campos normalizados e em dados brutos preservados para campos ainda não materializados;
 - testes contra texto de injeção SQL, paginação, labels, telefone inválido e grupos aninhados.
 
+Bloco de API concluído após o marco `fe1cde1`:
+
+- `ContactSelectionService` para busca e validação do CRUD de filtros salvos;
+- persistência para listar, criar, editar e excluir filtros em `saved_contact_filters`;
+- rotas `POST /api/contacts/search` e CRUD em `/api/contact-filters`;
+- composição do serviço em `app.ts` e registro opcional em `server.ts`;
+- testes de serviço e API para criação, edição, listagem, exclusão, busca e erros de validação.
+
 ## Validações da última etapa
 
 - `npm.cmd run typecheck`: passou.
 - `npm.cmd run lint`: passou.
 - `npm.cmd run format:check`: passou.
-- `npm.cmd test`: 157 testes passaram, 0 falharam.
+- `npm.cmd test`: 159 testes passaram, 0 falharam.
 - `npm.cmd run build`: passou.
 - Observação do ambiente: dentro do sandbox, o loader `tsx` falhou em `uv_os_get_passwd` com
   `ENOMEM`; a mesma suíte executada fora do sandbox passou integralmente.
@@ -96,9 +104,9 @@ Concluído neste marco:
 
 ## Próximo passo
 
-1. Fazer commit e push deste marco da Fase 2.
-2. Expor a busca e o CRUD de filtros salvos por API.
-3. Implementar seleção global, inclusões/exclusões manuais e UI de filtros.
+1. Implementar seleção global, inclusões/exclusões manuais e UI de filtros.
+2. Persistir a seleção reproduzível no rascunho da campanha.
+3. Continuar mantendo a Fase 2 isolada no branch até validação completa.
 
 ## Decisões e cuidados ativos
 

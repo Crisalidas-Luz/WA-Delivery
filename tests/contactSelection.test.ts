@@ -3,6 +3,9 @@ import { describe, it } from 'node:test';
 import { openDatabase } from '../src/database/database.js';
 import { compileContactFilter } from '../src/modules/contact-selection/ContactFilterSqlCompiler.js';
 import { ContactSelectionRepository } from '../src/modules/contact-selection/ContactSelectionRepository.js';
+import { ContactSelectionService } from '../src/modules/contact-selection/ContactSelectionService.js';
+import { registerContactSelectionRoutes } from '../src/web/contactSelectionRoutes.js';
+import Fastify from 'fastify';
 
 function filter(field: string, operator: string, value?: unknown) {
   return {
@@ -138,6 +141,65 @@ describe('ContactSelectionRepository', () => {
         2,
       );
     } finally {
+      database.close();
+    }
+  });
+});
+
+describe('filtros salvos e API de seleção', () => {
+  it('cria, edita, lista e exclui filtros salvos', () => {
+    const { database, repository } = setup();
+    try {
+      const service = new ContactSelectionService(repository);
+      const created = service.saveFilter({
+        name: 'Clientes',
+        definition: filter('label', 'contains', 'cliente'),
+      });
+      assert.equal(service.listSavedFilters()[0]?.name, 'Clientes');
+      const updated = service.saveFilter({
+        id: created.id,
+        name: 'Clientes VIP',
+        definition: filter('label', 'contains', 'vip'),
+      });
+      assert.equal(updated.name, 'Clientes VIP');
+      assert.equal(service.deleteSavedFilter(created.id), true);
+      assert.equal(service.listSavedFilters().length, 0);
+    } finally {
+      database.close();
+    }
+  });
+
+  it('expõe busca e CRUD por rotas com validação estruturada', async () => {
+    const { database, repository } = setup();
+    const server = Fastify();
+    registerContactSelectionRoutes(server, new ContactSelectionService(repository));
+    try {
+      const search = await server.inject({
+        method: 'POST',
+        url: '/api/contacts/search',
+        payload: { filter: filter('displayName', 'contains', 'ana') },
+      });
+      assert.equal(search.statusCode, 200);
+      assert.equal(search.json().total, 1);
+
+      const invalid = await server.inject({
+        method: 'POST',
+        url: '/api/contact-filters',
+        payload: { name: '', definition: filter('displayName', 'contains', 'ana') },
+      });
+      assert.equal(invalid.statusCode, 422);
+
+      const created = await server.inject({
+        method: 'POST',
+        url: '/api/contact-filters',
+        payload: { name: 'Anas', definition: filter('displayName', 'contains', 'ana') },
+      });
+      assert.equal(created.statusCode, 201);
+      const id = created.json().id;
+      const removed = await server.inject({ method: 'DELETE', url: `/api/contact-filters/${id}` });
+      assert.equal(removed.statusCode, 204);
+    } finally {
+      await server.close();
       database.close();
     }
   });

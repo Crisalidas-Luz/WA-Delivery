@@ -30,6 +30,8 @@ import type { GoogleTokenStore } from './providers/google/GooglePeopleProvider.j
 import { GoogleContactsRepository } from './modules/google-contacts/GoogleContactsRepository.js';
 import { GoogleContactsSyncService } from './modules/google-contacts/GoogleContactsSyncService.js';
 import { GoogleAuthService } from './modules/google-auth/GoogleAuthService.js';
+import { ContactSelectionRepository } from './modules/contact-selection/ContactSelectionRepository.js';
+import { ContactSelectionService } from './modules/contact-selection/ContactSelectionService.js';
 
 /** Lê a versão da aplicação do package.json (para metadados de backup). */
 function appVersion(): string {
@@ -52,6 +54,7 @@ const csvImports = new CsvImportService(contacts, settings);
 const media = new MediaService(new MediaRepository(database), resolve('data/media'));
 const campaigns = new CampaignService(new CampaignRepository(database), contacts, media);
 const google = createGoogleService();
+const contactSelection = new ContactSelectionService(new ContactSelectionRepository(database));
 const queue = new CampaignQueueWorker(
   new CampaignQueueRepository(database),
   campaigns,
@@ -101,6 +104,7 @@ const server = await buildServer({
   media,
   queue,
   ...(google ? { google } : {}),
+  contactSelection,
   backup,
   // Após restaurar, encerra para reiniciar limpo (RUN.bat/run.sh reabrem).
   onRestored: () => {

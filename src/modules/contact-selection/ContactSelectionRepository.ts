@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { compileContactFilter } from './ContactFilterSqlCompiler.js';
+import type { ContactFilterDefinition } from './filterTypes.js';
 
 export interface ContactSearchInput {
   filter: unknown;
@@ -24,6 +25,14 @@ export interface ContactSearchResult {
   total: number;
   page: number;
   pageSize: number;
+}
+
+export interface SavedContactFilter {
+  id: number;
+  name: string;
+  definition: ContactFilterDefinition;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export class ContactSelectionRepository {
@@ -87,6 +96,72 @@ export class ContactSelectionRepository {
       pageSize,
     };
   }
+
+  public listSavedFilters(): SavedContactFilter[] {
+    return (
+      this.database
+        .prepare(
+          `SELECT id, name, definition_json, created_at, updated_at
+           FROM saved_contact_filters ORDER BY LOWER(name), id`,
+        )
+        .all() as unknown as SavedFilterRow[]
+    ).map(toSavedFilter);
+  }
+
+  public saveFilter(
+    name: string,
+    definition: ContactFilterDefinition,
+    id?: number,
+  ): SavedContactFilter {
+    let filterId = id;
+    if (id) {
+      const result = this.database
+        .prepare(
+          `UPDATE saved_contact_filters SET name = ?, definition_json = ?,
+            updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+        )
+        .run(name, JSON.stringify(definition), id);
+      if (result.changes === 0) throw new Error('Filtro salvo não encontrado.');
+    } else {
+      filterId = Number(
+        this.database
+          .prepare('INSERT INTO saved_contact_filters (name, definition_json) VALUES (?, ?)')
+          .run(name, JSON.stringify(definition)).lastInsertRowid,
+      );
+    }
+    if (!filterId) throw new Error('Não foi possível determinar o filtro salvo.');
+    const row = this.database
+      .prepare(
+        `SELECT id, name, definition_json, created_at, updated_at
+         FROM saved_contact_filters WHERE id = ?`,
+      )
+      .get(filterId) as unknown as SavedFilterRow;
+    return toSavedFilter(row);
+  }
+
+  public deleteSavedFilter(id: number): boolean {
+    return (
+      this.database.prepare('DELETE FROM saved_contact_filters WHERE id = ?').run(id).changes > 0
+    );
+  }
+}
+
+interface SavedFilterRow {
+  id: number;
+  name: string;
+  definition_json: string;
+  created_at: string;
+  updated_at: string;
+}
+
+function toSavedFilter(row: SavedFilterRow): SavedContactFilter {
+  return {
+    id: row.id,
+    name: row.name,
+    definition: JSON.parse(row.definition_json) as ContactFilterDefinition,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
 }
 
 function positiveInteger(value: number | undefined, fallback: number): number {
