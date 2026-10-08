@@ -5,7 +5,6 @@ const saveButton = document.querySelector('#save-button');
 
 const NUMERIC_FIELDS = [
   'operationTimeoutMs',
-  'maxAttempts',
   'retryBackoffMs',
   'retryBackoffCapMs',
   'retentionDays',
@@ -18,6 +17,7 @@ function fill(settings) {
     if (input) input.value = settings[field];
   }
   const sound = document.querySelector('#soundEnabled');
+  document.querySelector('#maxAttempts').value = 3;
   if (sound) sound.checked = Boolean(settings.soundEnabled);
 }
 
@@ -162,7 +162,12 @@ googleSync.addEventListener('click', async () => {
 });
 
 googleDisconnect.addEventListener('click', async () => {
-  if (!confirm('Desconectar a conta Google deste computador? Os contatos já sincronizados permanecerão no histórico local.')) return;
+  if (
+    !confirm(
+      'Desconectar a conta Google deste computador? Os contatos já sincronizados permanecerão no histórico local.',
+    )
+  )
+    return;
   googleDisconnect.disabled = true;
   showGoogleError();
   try {
@@ -192,7 +197,11 @@ const cleanupMessage = document.querySelector('#cleanup-message');
 const cleanupError = document.querySelector('#cleanup-error');
 
 cleanupButton.addEventListener('click', async () => {
-  if (!confirm('Remover definitivamente as campanhas finalizadas mais antigas que a retenção configurada? Esta ação não pode ser desfeita.')) {
+  if (
+    !confirm(
+      'Remover definitivamente as campanhas finalizadas mais antigas que a retenção configurada? Esta ação não pode ser desfeita.',
+    )
+  ) {
     return;
   }
   cleanupButton.disabled = true;
@@ -227,7 +236,11 @@ restoreForm.addEventListener('submit', async (event) => {
   event.preventDefault();
   const file = restoreFile.files[0];
   if (!file) return;
-  if (!confirm('Restaurar substitui os dados atuais (banco, mídias e sessão do WhatsApp). Um backup de segurança será criado antes. Continuar?')) {
+  if (
+    !confirm(
+      'Restaurar substitui os dados atuais (banco, mídias e sessão do WhatsApp). Um backup de segurança será criado antes. Continuar?',
+    )
+  ) {
     return;
   }
   restoreButton.disabled = true;

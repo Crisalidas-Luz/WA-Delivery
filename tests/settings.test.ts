@@ -24,12 +24,12 @@ describe('SettingsService', () => {
     const updated = service.update({
       defaultCountryCode: '1',
       defaultAreaCode: '11',
-      maxAttempts: 5,
+      maxAttempts: 3,
       soundEnabled: false,
     });
     assert.equal(updated.defaultCountryCode, '1');
     assert.equal(updated.defaultAreaCode, '11');
-    assert.equal(updated.maxAttempts, 5);
+    assert.equal(updated.maxAttempts, 3);
     assert.equal(updated.soundEnabled, false);
     // Campos não informados preservam o default.
     assert.equal(updated.operationTimeoutMs, DEFAULT_SETTINGS.operationTimeoutMs);
@@ -42,7 +42,7 @@ describe('SettingsService', () => {
       (error: unknown) => error instanceof SettingsValidationError,
     );
     assert.throws(
-      () => service.update({ maxAttempts: 0 }),
+      () => service.update({ maxAttempts: 5 }),
       (error: unknown) => error instanceof SettingsValidationError,
     );
     assert.throws(
@@ -62,10 +62,10 @@ describe('SettingsService', () => {
   it('reidrata as configurações persistidas ao reabrir o serviço', () => {
     const database = openDatabase(':memory:');
     const repository = new SettingsRepository(database);
-    new SettingsService(repository).update({ defaultAreaCode: '21', maxAttempts: 4 });
+    repository.setAll({ defaultAreaCode: '21', maxAttempts: '9' });
     const reopened = new SettingsService(repository);
     assert.equal(reopened.getAll().defaultAreaCode, '21');
-    assert.equal(reopened.getAll().maxAttempts, 4);
+    assert.equal(reopened.getAll().maxAttempts, 3);
   });
 
   it('notifica assinantes quando as configurações mudam', () => {
@@ -74,9 +74,9 @@ describe('SettingsService', () => {
     const unsubscribe = service.onChange(() => {
       received += 1;
     });
-    service.update({ maxAttempts: 2 });
+    service.update({ soundEnabled: false });
     unsubscribe();
-    service.update({ maxAttempts: 3 });
+    service.update({ soundEnabled: true });
     assert.equal(received, 1);
   });
 });

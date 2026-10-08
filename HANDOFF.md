@@ -271,14 +271,29 @@ Escolha de telefone e variáveis Google:
 - leitura individual da People API solicita o mesmo conjunto amplo de campos da sincronização;
 - testes cobrem ambiguidade/escolha persistida e renderização imutável de variável Google.
 
+Tentativas, retenção e navegação do fluxo:
+
+- o limite de tentativas técnicas agora é invariavelmente três no serviço de configurações e no
+  worker, inclusive ao abrir bancos antigos que armazenavam outro valor;
+- a configuração correspondente permanece visível para explicar a política, mas não pode mais ser
+  alterada na interface;
+- exclusão manual e limpeza por retenção bloqueiam campanhas com jobs de exclusão pendentes, em
+  execução, parciais ou com falha; auditorias terminais são removidas junto da campanha;
+- o fluxo principal ganhou um indicador responsivo de etapas para conexão, contatos, campanha,
+  execução e revisão, com atualização do passo ativo ao preparar a campanha;
+- onboarding e README agora explicam Google Contacts, escolha de telefones ambíguos, manifesto,
+  exclusão revisada, callback loopback e persistência segura dos tokens;
+- as rotas de jobs de exclusão agora têm cobertura HTTP para criação assíncrona, consulta direta,
+  consulta do job mais recente, repetição, ID inválido e integração não configurada.
+
 ## Validações da última etapa
 
 - `npm.cmd run typecheck`: passou.
 - `npm.cmd run lint`: passou.
 - `npm.cmd run format`: passou e normalizou os arquivos alterados.
-- `npm.cmd test`: 176 testes passaram, 0 falharam.
+- `npm.cmd test`: 179 testes passaram, 0 falharam.
 - `npm.cmd run build`: passou.
-- `node --check public/contacts.js`: passou.
+- `node --check public/settings.js` e `node --check public/campaign.js`: passaram.
 - Observação do ambiente: dentro do sandbox, o loader `tsx` falhou em `uv_os_get_passwd` com
   `ENOMEM`; a mesma suíte executada fora do sandbox passou integralmente.
 - `npm ci` reportou uma vulnerabilidade de severidade alta em dependência; ainda precisa ser
@@ -286,12 +301,11 @@ Escolha de telefone e variáveis Google:
 
 ## Próximo passo
 
-1. Revisar onboarding/README e executar QA real de OAuth, sincronização, envio e exclusão com contas
-   de teste antes do merge.
-2. Auditar requisitos restantes do `AGENTS.md`, incluindo acessibilidade do wizard, cobertura das
-   rotas novas e retenção/backup das auditorias.
-3. Melhorar a edição de seleções Google em rascunhos já existentes e concluir a transformação visual
-   do fluxo em wizard com etapas explícitas.
+1. Fazer a sincronização inicial automaticamente depois do primeiro OAuth e impedir sincronizações
+   concorrentes.
+2. Expor no status Google os dados da última sincronização e melhorar o progresso exibido na UI.
+3. Melhorar filtros/ordenação do manifesto e a edição de seleções Google em rascunhos existentes.
+4. Executar QA real de OAuth, sincronização, envio e exclusão com contas de teste antes do merge.
 
 ## Decisões e cuidados ativos
 

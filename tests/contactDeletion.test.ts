@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import Fastify from 'fastify';
 import { openDatabase } from '../src/database/database.js';
 import { CampaignRepository } from '../src/modules/campaigns/CampaignRepository.js';
 import { CampaignService } from '../src/modules/campaigns/CampaignService.js';
@@ -21,6 +22,7 @@ import type {
   MediaMessage,
   WhatsAppProvider,
 } from '../src/providers/whatsapp/WhatsAppProvider.js';
+import { registerContactDeletionRoutes } from '../src/web/contactDeletionRoutes.js';
 
 class FakeWhatsApp implements WhatsAppProvider {
   public registered = false;
@@ -269,5 +271,67 @@ describe('ContactDeletionService', () => {
     assert.equal(recovered?.status, 'failed');
     assert.equal(recovered?.items[0]?.status, 'failed');
     assert.equal(recovered?.items[0]?.lastErrorCode, 'interrupted_unknown_outcome');
+  });
+});
+
+describe('contact deletion routes', () => {
+  it('cria, consulta e repete jobs pelos endpoints persistidos', async () => {
+    const { service, campaignId, recipientId } = setup({
+      reason: 'invalid_phone',
+      phones: ['123'],
+      deleteError: new Error('Falha temporária ao excluir contato Google (HTTP 500).'),
+    });
+    const server = Fastify();
+    registerContactDeletionRoutes(server, service);
+
+    const created = await server.inject({
+      method: 'POST',
+      url: `/api/campaigns/${campaignId}/deletion-jobs`,
+      payload: { confirmed: true, recipientIds: [recipientId] },
+    });
+    assert.equal(created.statusCode, 202);
+    const jobId = created.json().id as number;
+    assert.ok(jobId > 0);
+
+    const latest = await server.inject({
+      method: 'GET',
+      url: `/api/campaigns/${campaignId}/deletion-jobs/latest`,
+    });
+    assert.equal(latest.statusCode, 200);
+    assert.equal(latest.json().id, jobId);
+
+    const found = await server.inject({
+      method: 'GET',
+      url: `/api/contact-deletion-jobs/${jobId}`,
+    });
+    assert.equal(found.statusCode, 200);
+
+    for (let index = 0; index < 20 && service.find(jobId)?.status === 'running'; index += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    const retried = await server.inject({
+      method: 'POST',
+      url: `/api/contact-deletion-jobs/${jobId}/retry`,
+    });
+    assert.equal(retried.statusCode, 200);
+    assert.equal(retried.json().id, jobId);
+
+    const invalid = await server.inject({
+      method: 'GET',
+      url: '/api/contact-deletion-jobs/not-an-id',
+    });
+    assert.equal(invalid.statusCode, 400);
+    await server.close();
+  });
+
+  it('responde 503 quando a integração Google não está configurada', async () => {
+    const server = Fastify();
+    registerContactDeletionRoutes(server);
+    const response = await server.inject({
+      method: 'GET',
+      url: '/api/contact-deletion-jobs/1',
+    });
+    assert.equal(response.statusCode, 503);
+    await server.close();
   });
 });

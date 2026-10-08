@@ -57,6 +57,8 @@ const deleteGoogleContacts = document.querySelector('#delete-google-contacts');
 const retryGoogleDeletions = document.querySelector('#retry-google-deletions');
 const contactDeletionResults = document.querySelector('#contact-deletion-results');
 const errorPanel = document.querySelector('#campaign-error');
+const campaignWorkflowStep = document.querySelector('#campaign-workflow-step');
+const reviewWorkflowStep = document.querySelector('#review-workflow-step');
 const campaignId = Number(new URLSearchParams(location.search).get('id'));
 let selectedMedia;
 let loadedCampaign;
@@ -309,6 +311,10 @@ function applyLockedState(campaign, recipients, summary) {
   prepareZone.hidden = true;
   renderRecipients(recipients, summary);
   executionZone.hidden = false;
+  campaignWorkflowStep.classList.remove('active');
+  campaignWorkflowStep.removeAttribute('aria-current');
+  reviewWorkflowStep.classList.add('active');
+  reviewWorkflowStep.setAttribute('aria-current', 'step');
 }
 
 function renderProgress(progress) {

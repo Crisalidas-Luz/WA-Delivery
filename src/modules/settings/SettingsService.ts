@@ -60,7 +60,7 @@ export class SettingsService {
     parseDigits('defaultCountryCode', 'o código do país', false);
     parseDigits('defaultAreaCode', 'o DDD padrão', true);
     parseInt('operationTimeoutMs', 'O tempo limite', 1_000, 300_000);
-    parseInt('maxAttempts', 'O limite de tentativas', 1, 10);
+    parseInt('maxAttempts', 'O limite de tentativas', 3, 3);
     parseInt('retryBackoffMs', 'O backoff base', 0, 60_000);
     parseInt('retryBackoffCapMs', 'O teto do backoff', 0, 600_000);
     parseInt('retentionDays', 'A retenção', 0, 3_650);
@@ -109,6 +109,9 @@ export class SettingsService {
         (result[key] as string) = raw;
       }
     }
+    // Decisão de produto: campanhas sempre possuem no máximo três tentativas técnicas, inclusive
+    // quando um banco antigo contém um valor configurável diferente.
+    result.maxAttempts = 3;
     return result;
   }
 }

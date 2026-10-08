@@ -732,6 +732,48 @@ describe('CampaignService.deleteCampaign', () => {
       database.close();
     }
   });
+
+  it('remove auditoria concluída, mas bloqueia job de exclusão ainda incompleto', async () => {
+    const { database, list, campaigns } = makeService();
+    try {
+      const first = campaigns.createDraft({
+        name: 'Com auditoria concluída',
+        contactListId: list.id,
+        messageTemplate: 'Olá',
+        delayMinSeconds: 1,
+        delayMaxSeconds: 1,
+      });
+      database.prepare("UPDATE campaigns SET status = 'completed' WHERE id = ?").run(first.id);
+      database
+        .prepare(
+          `INSERT INTO contact_deletion_jobs
+            (campaign_id, status, requested_count, confirmed_at)
+           VALUES (?, 'completed', 0, CURRENT_TIMESTAMP)`,
+        )
+        .run(first.id);
+      assert.equal(await campaigns.deleteCampaign(first.id), true);
+
+      const second = campaigns.createDraft({
+        name: 'Com auditoria incompleta',
+        contactListId: list.id,
+        messageTemplate: 'Olá',
+        delayMinSeconds: 1,
+        delayMaxSeconds: 1,
+      });
+      database.prepare("UPDATE campaigns SET status = 'completed' WHERE id = ?").run(second.id);
+      database
+        .prepare(
+          `INSERT INTO contact_deletion_jobs
+            (campaign_id, status, requested_count, confirmed_at)
+           VALUES (?, 'failed', 1, CURRENT_TIMESTAMP)`,
+        )
+        .run(second.id);
+      assert.equal(await campaigns.deleteCampaign(second.id), false);
+      assert.ok(campaigns.findById(second.id));
+    } finally {
+      database.close();
+    }
+  });
 });
 
 describe('CampaignService.cleanupOldCampaigns', () => {

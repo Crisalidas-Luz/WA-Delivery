@@ -68,6 +68,46 @@ nav a:hover {
   margin-bottom: 20px;
   border-bottom: 1px solid #dce4df;
 }
+
+.workflow-steps {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 22px;
+  padding: 0;
+  list-style: none;
+}
+.workflow-steps li {
+  border: 1px solid #dce4df;
+  border-radius: 10px;
+  background: #fff;
+}
+.workflow-steps li.active {
+  border-color: #087f5b;
+  background: #eaf7f2;
+}
+.workflow-steps a {
+  display: block;
+  padding: 10px 8px;
+  color: #53615a;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-align: center;
+  text-decoration: none;
+}
+.workflow-steps li.active a {
+  color: #087f5b;
+}
+
+@media (max-width: 720px) {
+  .workflow-steps {
+    grid-template-columns: 1fr;
+  }
+
+  .workflow-steps a {
+    text-align: left;
+  }
+}
 .tab {
   appearance: none;
   border: none;

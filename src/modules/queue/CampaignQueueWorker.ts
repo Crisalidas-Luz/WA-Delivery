@@ -62,7 +62,7 @@ export class CampaignQueueWorker {
     private readonly now: () => number = Date.now,
   ) {
     this.fallbackOperationTimeoutMs = operationTimeoutMs;
-    this.fallbackMaxAttempts = Math.max(1, maxAttempts);
+    this.fallbackMaxAttempts = Math.min(3, Math.max(1, maxAttempts));
     this.fallbackRetryBackoffMs = Math.max(0, retryBackoffMs);
     this.fallbackRetryBackoffCapMs = Math.max(this.fallbackRetryBackoffMs, retryBackoffCapMs);
     this.settings = settings;
@@ -80,7 +80,10 @@ export class CampaignQueueWorker {
 
   /** Limite atual de tentativas por destinatário (respeita as configurações). */
   private get maxAttempts(): number {
-    return Math.max(1, this.settings?.getAll().maxAttempts ?? this.fallbackMaxAttempts);
+    return Math.min(
+      3,
+      Math.max(1, this.settings?.getAll().maxAttempts ?? this.fallbackMaxAttempts),
+    );
   }
 
   /** Backoff base atual entre tentativas transitórias (respeita as configurações). */

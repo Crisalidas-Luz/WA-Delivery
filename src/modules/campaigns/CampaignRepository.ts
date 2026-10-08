@@ -359,9 +359,21 @@ export class CampaignRepository {
       | undefined;
     // Uma campanha em execução não pode ser excluída; cancele-a antes.
     if (!row || row.status === 'running') return undefined;
+    const incompleteDeletionJob = this.database
+      .prepare(
+        `SELECT 1 FROM contact_deletion_jobs WHERE campaign_id = ?
+         AND status IN ('pending', 'running', 'partial', 'failed') LIMIT 1`,
+      )
+      .get(id);
+    if (incompleteDeletionJob) return undefined;
 
     this.database.exec('BEGIN IMMEDIATE');
     try {
+      this.database
+        .prepare(
+          "DELETE FROM contact_deletion_jobs WHERE campaign_id = ? AND status IN ('completed', 'cancelled')",
+        )
+        .run(id);
       this.database.prepare('DELETE FROM campaigns WHERE id = ?').run(id);
       let removedMedia = false;
       if (row.media_id !== null) {
@@ -458,6 +470,11 @@ export class CampaignRepository {
       WHERE campaigns.status IN ('completed', 'cancelled', 'failed')
         AND campaigns.finished_at IS NOT NULL
         AND campaigns.finished_at < datetime('now', ?)
+        AND NOT EXISTS (
+          SELECT 1 FROM contact_deletion_jobs deletion_job
+          WHERE deletion_job.campaign_id = campaigns.id
+            AND deletion_job.status IN ('pending', 'running', 'partial', 'failed')
+        )
     `,
       )
       .all(`-${retentionDays} days`) as unknown as Array<{
@@ -470,11 +487,15 @@ export class CampaignRepository {
     this.database.exec('BEGIN IMMEDIATE');
     try {
       const deleteCampaign = this.database.prepare('DELETE FROM campaigns WHERE id = ?');
+      const deleteDeletionJobs = this.database.prepare(
+        "DELETE FROM contact_deletion_jobs WHERE campaign_id = ? AND status IN ('completed', 'cancelled')",
+      );
       const deleteMedia = this.database.prepare(
         'DELETE FROM media WHERE id IN (SELECT media_id FROM campaigns WHERE id = ?)',
       );
       for (const row of rows) {
         deleteMedia.run(row.id);
+        deleteDeletionJobs.run(row.id);
         deleteCampaign.run(row.id);
       }
       this.database.exec('COMMIT');

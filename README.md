@@ -52,9 +52,12 @@ Para usar a agenda Google como fonte principal:
 2. Em **APIs e serviços**, ative a **Google People API**.
 3. Configure a tela de consentimento OAuth.
 4. Crie credenciais OAuth 2.0 do tipo **Aplicativo para computador**.
-5. Antes de iniciar a aplicação, configure as variáveis `GOOGLE_CLIENT_ID` e
+5. A aplicação usa `http://127.0.0.1:3000/api/google/oauth/callback` como callback loopback local.
+   Em credenciais do tipo **Aplicativo para computador**, o Google normalmente não exibe um campo
+   para cadastrar esse URI manualmente.
+6. Antes de iniciar a aplicação, configure as variáveis `GOOGLE_CLIENT_ID` e
    `GOOGLE_CLIENT_SECRET` com os valores fornecidos pelo Google.
-6. Abra **Configurações > Google Contacts**, conecte a conta e execute a sincronização.
+7. Abra **Configurações > Google Contacts**, conecte a conta e execute a sincronização.
 
 No Windows, os tokens são cifrados com DPAPI para o usuário atual e armazenados em
 `%LOCALAPPDATA%\WA-Delivery\google-tokens.bin`. Eles persistem entre execuções para evitar logins
@@ -64,6 +67,11 @@ No Linux/WSL, instale `libsecret-tools` (o comando `secret-tool`) e tenha um Sec
 desbloqueado na sessão. Os tokens são armazenados nesse cofre do sistema e também ficam fora do
 backup. Se o WSL não possuir um Secret Service disponível, use a aplicação pelo Windows; não há
 fallback para token em texto puro.
+
+O acesso solicitado é o escopo de contatos da People API, necessário para ler, sincronizar e —
+somente depois de revisão e confirmação explícita — excluir contatos. Desconectar revoga a sessão
+quando possível, mas mantém a agenda sincronizada e o histórico local. Após restaurar um backup em
+outro usuário/computador, conecte a conta novamente porque os tokens não fazem parte do `.wabkp`.
 
 ## Atualização
 

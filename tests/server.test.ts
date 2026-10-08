@@ -425,19 +425,19 @@ describe('servidor local', () => {
       payload: {
         defaultCountryCode: '1',
         defaultAreaCode: '11',
-        maxAttempts: 5,
+        maxAttempts: 3,
         soundEnabled: false,
       },
     });
     assert.equal(updated.statusCode, 200);
     assert.equal(updated.json().defaultCountryCode, '1');
     assert.equal(updated.json().defaultAreaCode, '11');
-    assert.equal(updated.json().maxAttempts, 5);
+    assert.equal(updated.json().maxAttempts, 3);
     assert.equal(updated.json().soundEnabled, false);
 
     // Persistiu: uma nova leitura reflete os valores salvos.
     const reread = await server.inject({ method: 'GET', url: '/api/settings' });
-    assert.equal(reread.json().maxAttempts, 5);
+    assert.equal(reread.json().maxAttempts, 3);
 
     await server.close();
   });
