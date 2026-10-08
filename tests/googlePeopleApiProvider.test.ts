@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { GoogleSyncTokenExpiredError } from '../src/providers/google/GooglePeopleProvider.js';
+import {
+  GoogleContactNotFoundError,
+  GoogleSyncTokenExpiredError,
+} from '../src/providers/google/GooglePeopleProvider.js';
 import { GooglePeopleApiProvider } from '../src/providers/google/people/GooglePeopleApiProvider.js';
 
 const config = {
@@ -113,5 +116,16 @@ describe('GooglePeopleApiProvider contatos', () => {
       /inválido/,
     );
     assert.equal(called, false);
+  });
+
+  it('distingue contato já ausente durante a exclusão', async () => {
+    const provider = new GooglePeopleApiProvider(
+      config,
+      (async () => new Response(null, { status: 404 })) as typeof fetch,
+    );
+    await assert.rejects(
+      () => provider.deleteContact({ accessToken: 'access', scope: [] }, 'people/123'),
+      GoogleContactNotFoundError,
+    );
   });
 });

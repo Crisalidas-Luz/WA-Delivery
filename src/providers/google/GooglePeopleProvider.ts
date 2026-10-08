@@ -88,6 +88,13 @@ export class GoogleSyncTokenExpiredError extends Error {
   }
 }
 
+export class GoogleContactNotFoundError extends Error {
+  public constructor() {
+    super('O contato Google já não existe.');
+    this.name = 'GoogleContactNotFoundError';
+  }
+}
+
 export interface GoogleTokenStore {
   save(key: string, tokens: GoogleTokenSet): Promise<void>;
   load(key: string): Promise<GoogleTokenSet | undefined>;

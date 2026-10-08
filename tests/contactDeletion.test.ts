@@ -15,6 +15,7 @@ import { MediaService } from '../src/modules/media/MediaService.js';
 import { SettingsRepository } from '../src/modules/settings/SettingsRepository.js';
 import { SettingsService } from '../src/modules/settings/SettingsService.js';
 import type { GoogleContactRecord } from '../src/providers/google/GooglePeopleProvider.js';
+import { GoogleContactNotFoundError } from '../src/providers/google/GooglePeopleProvider.js';
 import type {
   ConnectionListener,
   ConnectionState,
@@ -80,6 +81,7 @@ function setup(input: {
   phones: string[];
   recommendation?: 'recommended' | 'review' | 'not_recommended';
   deleteError?: Error;
+  deleteAsMissing?: boolean;
 }) {
   const database = openDatabase(':memory:');
   database
@@ -151,6 +153,7 @@ function setup(input: {
     getContact: async () => (deleted ? undefined : current),
     deleteContact: async () => {
       if (input.deleteError) throw input.deleteError;
+      if (input.deleteAsMissing) throw new GoogleContactNotFoundError();
       deleted = true;
     },
     synchronize: async () => {
@@ -232,6 +235,21 @@ describe('ContactDeletionService', () => {
     assert.equal(job.status, 'failed');
     assert.equal(job.items[0]?.lastErrorCode, 'google_authorization');
     assert.doesNotMatch(job.items[0]?.lastErrorMessage ?? '', /403/);
+  });
+
+  it('registra contato removido entre a validação e a exclusão como já ausente', async () => {
+    const { service, campaignId, recipientId } = setup({
+      reason: 'invalid_phone',
+      phones: ['123'],
+      deleteAsMissing: true,
+    });
+    const job = await service.createAndExecute(campaignId, {
+      confirmed: true,
+      recipientIds: [recipientId],
+    });
+    assert.equal(job.status, 'completed');
+    assert.equal(job.items[0]?.status, 'already_missing');
+    assert.ok(job.items[0]?.verifiedAt);
   });
 
   it('inicia em segundo plano e permite acompanhar pelo registro persistido', async () => {

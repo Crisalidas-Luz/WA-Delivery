@@ -322,12 +322,22 @@ Edição da seleção de um rascunho Google:
 - teste de domínio confirma que o ID do rascunho é preservado e que IDs/resumo resolvidos são
   recalculados.
 
+Corrida segura durante exclusão Google:
+
+- o provedor People API agora distingue explicitamente `404` no `deleteContact` por meio de um erro
+  de domínio, em vez de tratá-lo como sucesso indiferenciado;
+- se o contato existia na validação, mas desaparece antes da chamada de exclusão, o item termina
+  como `already_missing` e verificado;
+- o caso não entra em backoff, não aparece como falha e continua auditável separadamente de uma
+  exclusão aceita pela chamada atual;
+- testes cobrem tanto a tradução do `404` no provedor quanto a corrida completa no job.
+
 ## Validações da última etapa
 
 - `npm.cmd run typecheck`: passou.
 - `npm.cmd run lint`: passou.
 - `npm.cmd run format`: passou e normalizou os arquivos alterados.
-- `npm.cmd test`: 181 testes passaram, 0 falharam.
+- `npm.cmd test`: 183 testes passaram, 0 falharam.
 - `npm.cmd run build`: passou.
 - `node --check public/settings.js` e `node --check public/campaign.js`: passaram.
 - Observação do ambiente: dentro do sandbox, o loader `tsx` falhou em `uv_os_get_passwd` com
@@ -337,7 +347,7 @@ Edição da seleção de um rascunho Google:
 
 ## Próximo passo
 
-1. Auditar estados `already_missing` em corridas de exclusão e feedback de retomada da fila.
+1. Melhorar o feedback de retomada da fila após reinício e durante a espera entre lotes.
 2. Revisar acessibilidade/progresso de operações longas e a cobertura do fluxo visual.
 3. Revisar o tratamento de erro ao excluir campanhas bloqueadas por auditoria incompleta.
 4. Executar QA real de OAuth, sincronização, envio e exclusão com contas de teste antes do merge.

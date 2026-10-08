@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import {
+  GoogleContactNotFoundError,
   GOOGLE_CONTACTS_SCOPE,
   GOOGLE_IDENTITY_SCOPES,
   GoogleSyncTokenExpiredError,
@@ -175,7 +176,8 @@ export class GooglePeopleApiProvider implements GooglePeopleProvider {
       `https://people.googleapis.com/v1/${resourceName}:deleteContact`,
       { method: 'DELETE' },
     );
-    if (!response.ok && response.status !== 404) {
+    if (response.status === 404) throw new GoogleContactNotFoundError();
+    if (!response.ok) {
       throw new Error(`Não foi possível excluir o contato Google (HTTP ${response.status}).`);
     }
   }

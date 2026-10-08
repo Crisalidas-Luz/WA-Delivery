@@ -5,6 +5,7 @@ import type { GoogleAuthService } from '../google-auth/GoogleAuthService.js';
 import type { GoogleContactsRepository } from '../google-contacts/GoogleContactsRepository.js';
 import type { SettingsService } from '../settings/SettingsService.js';
 import type { WhatsAppProvider } from '../../providers/whatsapp/WhatsAppProvider.js';
+import { GoogleContactNotFoundError } from '../../providers/google/GooglePeopleProvider.js';
 import { ContactDeletionRepository } from './ContactDeletionRepository.js';
 import {
   ContactDeletionValidationError,
@@ -190,8 +191,13 @@ export class ContactDeletionService {
           item,
           current.phones.map((phone) => phone.value),
         );
-        await this.deleteWithBackoff(item.resourceName);
-        this.repository.finishItem(item.id, 'deleted', false);
+        try {
+          await this.deleteWithBackoff(item.resourceName);
+          this.repository.finishItem(item.id, 'deleted', false);
+        } catch (error) {
+          if (!(error instanceof GoogleContactNotFoundError)) throw error;
+          this.repository.finishItem(item.id, 'already_missing', true);
+        }
       } catch (error) {
         const code = errorCode(error);
         this.repository.failItem(item.id, code, safeMessage(error));
