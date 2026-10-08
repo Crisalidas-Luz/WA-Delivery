@@ -1,4 +1,9 @@
 import type { ContactService } from '../contacts/ContactService.js';
+import type {
+  ContactSelectionService,
+  ResolvedContactSelectionWithContacts,
+} from '../contact-selection/ContactSelectionService.js';
+import type { ContactSearchItem } from '../contact-selection/ContactSelectionRepository.js';
 import type { MediaService } from '../media/MediaService.js';
 import { CampaignRepository } from './CampaignRepository.js';
 import {
@@ -17,11 +22,13 @@ export class CampaignService {
     private readonly repository: CampaignRepository,
     private readonly contacts: ContactService,
     private readonly media: MediaService,
+    private readonly contactSelection?: ContactSelectionService,
   ) {}
 
   public simulate(input: CampaignComposerInput): CampaignSimulation {
     const validated = this.validate(input, false);
-    const list = this.contacts.findById(validated.contactListId);
+    if (validated.contactSelection) return this.simulateGoogle(validated);
+    const list = this.contacts.findById(validated.contactListId!);
     if (!list) {
       throw new CampaignValidationError([
         { path: 'contactListId', message: 'A lista de contatos não existe.' },
@@ -67,6 +74,7 @@ export class CampaignService {
     return {
       contactListId: list.id,
       contactListName: list.name,
+      selectionSource: 'local_list',
       recipientCount: eligible.length,
       optedOutCount,
       delayMinSeconds: validated.delayMinSeconds,
@@ -76,6 +84,10 @@ export class CampaignService {
         intervals * ((validated.delayMinSeconds + validated.delayMaxSeconds) / 2),
       ),
       durationMaxSeconds: intervals * validated.delayMaxSeconds,
+      batchSize: validated.batchSize!,
+      batchCount: Math.ceil(eligible.length / validated.batchSize!),
+      batchIntervalSeconds: validated.batchIntervalSeconds!,
+      batchOrder: validated.batchOrder!,
       samples: eligible.slice(0, 3).map((contact) => ({
         contactId: contact.id,
         name: contact.name,
@@ -87,8 +99,17 @@ export class CampaignService {
 
   public createDraft(input: CampaignComposerInput): CampaignSummary {
     const validated = this.validate(input, true);
-    this.simulate(validated);
-    return this.repository.createDraft(validated as CampaignComposerInput & { name: string });
+    const simulation = this.simulate(validated);
+    const campaign = this.repository.createDraft(
+      validated as CampaignComposerInput & { name: string },
+    );
+    if (validated.contactSelection) {
+      const resolved = this.requireGoogleSelection(validated.contactSelection);
+      this.repository.saveSelectionResolution(campaign.id, resolved.summary, resolved.contactIds);
+      return this.repository.findById(campaign.id)!;
+    }
+    void simulation;
+    return campaign;
   }
 
   public list(): CampaignSummary[] {
@@ -115,6 +136,11 @@ export class CampaignService {
     if (!updated) return undefined;
     if (updated.removedMediaStorageName) {
       await this.media.removeFile(updated.removedMediaStorageName);
+    }
+    if (validated.contactSelection) {
+      const resolved = this.requireGoogleSelection(validated.contactSelection);
+      this.repository.saveSelectionResolution(updated.campaign.id, resolved.summary, resolved.contactIds);
+      return this.repository.findById(updated.campaign.id);
     }
     return updated.campaign;
   }
@@ -194,6 +220,7 @@ export class CampaignService {
     }
     const campaign = this.repository.findById(id);
     if (!campaign || campaign.status !== 'draft') return undefined;
+    if (campaign.selectionSource === 'google') return this.prepareGoogleDraft(campaign);
     const list = this.contacts.findById(campaign.contactListId);
     if (!list || list.contacts.length === 0) {
       throw new CampaignValidationError([
@@ -212,11 +239,13 @@ export class CampaignService {
     }
     return this.repository.prepareDraft(
       id,
-      eligible.map((contact) => ({
+      eligible.map((contact, index) => ({
         sourceContactId: contact.id,
         name: contact.name,
         phone: contact.phone,
         renderedMessage: renderMessage(campaign.messageTemplate, contact.name, contact.data),
+        batchNumber: Math.floor(index / campaign.batchSize) + 1,
+        positionInBatch: (index % campaign.batchSize) + 1,
       })),
     );
   }
@@ -258,15 +287,35 @@ export class CampaignService {
     const name = typeof input.name === 'string' ? input.name.trim() : '';
     const messageTemplate =
       typeof input.messageTemplate === 'string' ? input.messageTemplate.trim() : '';
-    const contactListId = Number(input.contactListId);
+    const contactListId = input.contactListId === undefined ? undefined : Number(input.contactListId);
     const delayMinSeconds = Number(input.delayMinSeconds);
     const delayMaxSeconds = Number(input.delayMaxSeconds);
     const mediaId =
       input.mediaId === undefined || input.mediaId === null ? input.mediaId : Number(input.mediaId);
 
     if (requireName && !name) issues.push({ path: 'name', message: 'Informe o nome da campanha.' });
-    if (!Number.isSafeInteger(contactListId) || contactListId <= 0) {
+    if (!input.contactSelection && (!Number.isSafeInteger(contactListId) || Number(contactListId) <= 0)) {
       issues.push({ path: 'contactListId', message: 'Selecione uma lista de contatos.' });
+    }
+    if (input.contactSelection && !this.contactSelection) {
+      issues.push({ path: 'contactSelection', message: 'A seleção Google não está disponível.' });
+    }
+    const batchSize = input.batchSize === undefined ? 100 : Number(input.batchSize);
+    const batchIntervalSeconds =
+      input.batchIntervalSeconds === undefined ? 0 : Number(input.batchIntervalSeconds);
+    const batchOrder = input.batchOrder ?? 'name';
+    if (!Number.isSafeInteger(batchSize) || batchSize < 1 || batchSize > 100) {
+      issues.push({ path: 'batchSize', message: 'O lote deve conter de 1 a 100 contatos.' });
+    }
+    if (
+      !Number.isSafeInteger(batchIntervalSeconds) ||
+      batchIntervalSeconds < 0 ||
+      batchIntervalSeconds > 172_800
+    ) {
+      issues.push({ path: 'batchIntervalSeconds', message: 'O intervalo entre lotes deve estar entre 0 e 48 horas.' });
+    }
+    if (!['name', 'google', 'random'].includes(batchOrder)) {
+      issues.push({ path: 'batchOrder', message: 'Escolha uma ordenação de lotes válida.' });
     }
     if (!messageTemplate) issues.push({ path: 'messageTemplate', message: 'Escreva a mensagem.' });
     if (messageTemplate.length > MAX_MESSAGE_LENGTH) {
@@ -320,10 +369,14 @@ export class CampaignService {
     if (issues.length > 0) throw new CampaignValidationError(issues);
     return {
       ...(requireName ? { name } : input.name === undefined ? {} : { name }),
-      contactListId,
+      ...(contactListId === undefined ? {} : { contactListId }),
+      ...(input.contactSelection === undefined ? {} : { contactSelection: input.contactSelection }),
       messageTemplate,
       delayMinSeconds,
       delayMaxSeconds,
+      batchSize,
+      batchIntervalSeconds,
+      batchOrder,
       ...(mediaId === undefined ? {} : { mediaId }),
     };
   }

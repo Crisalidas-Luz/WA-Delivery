@@ -12,6 +12,26 @@ pendências e próximo passo. Não substituir o plano completo de produto em `AG
 - Base: `main` no commit `cfc3881`
 - Etapa em andamento: Fase 2 — filtros e seleção
 - Merge para `main`: proibido até validação integral e aprovação do usuário
+- Sessão pausada a pedido do usuário em 2026-10-07.
+
+### Checkpoint WIP da pausa
+
+- Último marco integralmente validado e publicado: `a521a9a` (`feat: add campaign selection and
+  batch schema`), com 162 testes, lint, typecheck e build aprovados.
+- Trabalho iniciado depois desse marco: conexão da migration v11 aos tipos, ao
+  `CampaignRepository`, ao `CampaignService` e à fila; também foi adicionado
+  `resolveSelectionWithContacts` ao serviço de seleção.
+- O trabalho pós-`a521a9a` está deliberadamente incompleto e deve ser retomado como WIP. O
+  `CampaignService` já referencia os métodos auxiliares `simulateGoogle`, `requireGoogleSelection`
+  e `prepareGoogleDraft`, mas eles ainda precisam ser implementados.
+- O typecheck ainda precisa ser reexecutado e corrigido. Antes da pausa, os erros conhecidos
+  incluíam adaptação do worker para telefone opcional no manifesto, follow-up de snapshots Google,
+  retorno dos novos campos de simulação e narrowing de `contactListId`; algumas dessas correções já
+  começaram, mas não foram validadas após o último patch.
+- Não tratar o próximo commit WIP como etapa funcional. Ao retomar: concluir os três helpers do
+  serviço, ajustar fila/follow-up/exportação, compor `ContactSelectionService` antes de
+  `CampaignService` em `app.ts`, adicionar testes Google de simulação/rascunho/preparo e só então
+  rodar format, typecheck, lint, build e suíte completa.
 
 ## Progresso
 

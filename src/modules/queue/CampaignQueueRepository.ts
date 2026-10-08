@@ -2,8 +2,10 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { CampaignRecipientSnapshot, CampaignSummary } from '../campaigns/campaignTypes.js';
 import type { QueueProgress } from './queueTypes.js';
 
-interface QueueRecipient extends CampaignRecipientSnapshot {
-  attemptCount: number;
+interface QueueRecipient
+  extends Omit<CampaignRecipientSnapshot, 'phone' | 'sourceContactId'> {
+  phone: string;
+  sourceContactId?: number;
 }
 
 export class CampaignQueueRepository {
@@ -114,32 +116,44 @@ export class CampaignQueueRepository {
     const row = this.database
       .prepare(
         `
-      SELECT id, campaign_id, source_contact_id, name, phone, rendered_message, status, attempt_count
-      FROM campaign_recipients WHERE campaign_id = ? AND status = 'pending' ORDER BY id LIMIT 1
+      SELECT id, campaign_id, source_contact_id, name, phone, rendered_message, status,
+        attempt_count, batch_number, position_in_batch, eligibility_status,
+        deletion_recommendation
+      FROM campaign_recipients WHERE campaign_id = ? AND status = 'pending'
+        AND eligibility_status = 'eligible' AND phone IS NOT NULL
+      ORDER BY batch_number, position_in_batch, id LIMIT 1
     `,
       )
       .get(campaignId) as
       | {
           id: number;
           campaign_id: number;
-          source_contact_id: number;
+          source_contact_id: number | null;
           name: string;
           phone: string;
           rendered_message: string;
           status: QueueRecipient['status'];
           attempt_count: number;
+          batch_number: number;
+          position_in_batch: number;
+          eligibility_status: QueueRecipient['eligibilityStatus'];
+          deletion_recommendation: QueueRecipient['deletionRecommendation'];
         }
       | undefined;
     return row
       ? {
           id: row.id,
           campaignId: row.campaign_id,
-          sourceContactId: row.source_contact_id,
+          ...(row.source_contact_id === null ? {} : { sourceContactId: row.source_contact_id }),
           name: row.name,
           phone: row.phone,
           renderedMessage: row.rendered_message,
           status: row.status,
           attemptCount: row.attempt_count,
+          batchNumber: row.batch_number,
+          positionInBatch: row.position_in_batch,
+          eligibilityStatus: row.eligibility_status,
+          deletionRecommendation: row.deletion_recommendation,
         }
       : undefined;
   }

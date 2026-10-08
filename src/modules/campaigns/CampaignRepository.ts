@@ -8,8 +8,8 @@ import type {
 interface CampaignRow {
   id: number;
   name: string;
-  contact_list_id: number;
-  contact_list_name: string;
+  contact_list_id: number | null;
+  contact_list_name: string | null;
   recipient_count: number;
   message_template: string;
   delay_min_seconds: number;
@@ -26,6 +26,16 @@ interface CampaignRow {
   media_mimetype: string | null;
   media_kind: 'image' | 'video' | null;
   media_size_bytes: number | null;
+  selection_source: CampaignSummary['selectionSource'];
+  selection_filter_json: string | null;
+  selection_summary_json: string | null;
+  selection_resolved_ids_json: string | null;
+  batch_size: number;
+  batch_interval_seconds: number;
+  batch_order: CampaignSummary['batchOrder'];
+  batch_order_seed: string | null;
+  current_batch_number: number;
+  next_batch_at: string | null;
 }
 
 export interface DeletedDraft {
@@ -40,10 +50,21 @@ export interface UpdatedDraft {
 interface RecipientRow {
   id: number;
   campaign_id: number;
-  source_contact_id: number;
+  source_contact_id: number | null;
+  google_contact_id: number | null;
+  resource_name_snapshot: string | null;
   name: string;
-  phone: string;
+  phone: string | null;
+  phone_original: string | null;
+  phone_label: string | null;
   rendered_message: string;
+  batch_number: number;
+  position_in_batch: number;
+  eligibility_status: CampaignRecipientSnapshot['eligibilityStatus'];
+  result_code: string | null;
+  result_reason: string | null;
+  deletion_recommendation: CampaignRecipientSnapshot['deletionRecommendation'];
+  deletion_reason_code: string | null;
   status: CampaignRecipientSnapshot['status'];
   attempt_count: number;
   last_error: string | null;
@@ -61,17 +82,23 @@ export class CampaignRepository {
         .prepare(
           `
         INSERT INTO campaigns (
-          name, contact_list_id, message_template, delay_min_seconds, delay_max_seconds, media_id
-        ) VALUES (?, ?, ?, ?, ?, ?)
+          name, contact_list_id, message_template, delay_min_seconds, delay_max_seconds, media_id,
+          selection_source, selection_filter_json, batch_size, batch_interval_seconds, batch_order
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
         )
         .run(
           input.name,
-          input.contactListId,
+          input.contactListId ?? null,
           input.messageTemplate,
           input.delayMinSeconds,
           input.delayMaxSeconds,
           input.mediaId ?? null,
+          input.contactSelection ? 'google' : 'local_list',
+          input.contactSelection ? JSON.stringify(input.contactSelection) : null,
+          input.batchSize ?? 100,
+          input.batchIntervalSeconds ?? 0,
+          input.batchOrder ?? 'name',
         );
       if (input.mediaId !== undefined) {
         this.database
@@ -133,17 +160,24 @@ export class CampaignRepository {
           `
         UPDATE campaigns
         SET name = ?, contact_list_id = ?, message_template = ?, delay_min_seconds = ?,
-            delay_max_seconds = ?, media_id = ?, updated_at = CURRENT_TIMESTAMP
+            delay_max_seconds = ?, media_id = ?, selection_source = ?, selection_filter_json = ?,
+            batch_size = ?, batch_interval_seconds = ?, batch_order = ?,
+            updated_at = CURRENT_TIMESTAMP
         WHERE id = ? AND status = 'draft'
       `,
         )
         .run(
           input.name,
-          input.contactListId,
+          input.contactListId ?? null,
           input.messageTemplate,
           input.delayMinSeconds,
           input.delayMaxSeconds,
           nextMediaId,
+          input.contactSelection ? 'google' : 'local_list',
+          input.contactSelection ? JSON.stringify(input.contactSelection) : null,
+          input.batchSize ?? 100,
+          input.batchIntervalSeconds ?? 0,
+          input.batchOrder ?? 'name',
           id,
         );
       if (mediaChanged && nextMediaId !== null) {
@@ -167,13 +201,37 @@ export class CampaignRepository {
     }
   }
 
+  public saveSelectionResolution(
+    id: number,
+    summary: Record<string, number>,
+    resolvedIds: number[],
+  ): void {
+    this.database
+      .prepare(
+        `UPDATE campaigns SET selection_summary_json = ?, selection_resolved_ids_json = ?,
+          updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'draft'`,
+      )
+      .run(JSON.stringify(summary), JSON.stringify(resolvedIds), id);
+  }
+
   public prepareDraft(
     id: number,
     recipients: Array<{
-      sourceContactId: number;
+      sourceContactId?: number;
+      googleContactId?: number;
+      resourceName?: string;
       name: string;
-      phone: string;
+      phone?: string;
+      phoneOriginal?: string;
+      phoneLabel?: string;
       renderedMessage: string;
+      batchNumber?: number;
+      positionInBatch?: number;
+      eligibilityStatus?: CampaignRecipientSnapshot['eligibilityStatus'];
+      resultCode?: string;
+      resultReason?: string;
+      deletionRecommendation?: CampaignRecipientSnapshot['deletionRecommendation'];
+      deletionReasonCode?: string;
     }>,
   ): CampaignSummary | undefined {
     this.database.exec('BEGIN IMMEDIATE');
@@ -193,16 +251,31 @@ export class CampaignRepository {
       }
       const insert = this.database.prepare(`
         INSERT INTO campaign_recipients (
-          campaign_id, source_contact_id, name, phone, rendered_message
-        ) VALUES (?, ?, ?, ?, ?)
+          campaign_id, source_contact_id, google_contact_id, resource_name_snapshot, name, phone,
+          phone_original, phone_label, rendered_message, batch_number, position_in_batch,
+          eligibility_status, result_code, result_reason, deletion_recommendation,
+          deletion_reason_code, status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const recipient of recipients) {
         insert.run(
           id,
-          recipient.sourceContactId,
+          recipient.sourceContactId ?? null,
+          recipient.googleContactId ?? null,
+          recipient.resourceName ?? null,
           recipient.name,
-          recipient.phone,
+          recipient.phone ?? null,
+          recipient.phoneOriginal ?? recipient.phone ?? null,
+          recipient.phoneLabel ?? null,
           recipient.renderedMessage,
+          recipient.batchNumber ?? 1,
+          recipient.positionInBatch ?? 1,
+          recipient.eligibilityStatus ?? 'eligible',
+          recipient.resultCode ?? null,
+          recipient.resultReason ?? null,
+          recipient.deletionRecommendation ?? 'not_recommended',
+          recipient.deletionReasonCode ?? null,
+          (recipient.eligibilityStatus ?? 'eligible') === 'eligible' ? 'pending' : 'skipped',
         );
       }
       this.database.exec('COMMIT');
@@ -218,8 +291,11 @@ export class CampaignRepository {
       this.database
         .prepare(
           `
-      SELECT id, campaign_id, source_contact_id, name, phone, rendered_message, status,
-        attempt_count, last_error, sent_at, updated_at
+      SELECT id, campaign_id, source_contact_id, google_contact_id, resource_name_snapshot,
+        name, phone, phone_original, phone_label, rendered_message, batch_number,
+        position_in_batch, eligibility_status, result_code, result_reason,
+        deletion_recommendation, deletion_reason_code, status, attempt_count, last_error, sent_at,
+        updated_at
       FROM campaign_recipients WHERE campaign_id = ? ORDER BY id
     `,
         )
@@ -227,10 +303,23 @@ export class CampaignRepository {
     ).map((row) => ({
       id: row.id,
       campaignId: row.campaign_id,
-      sourceContactId: row.source_contact_id,
+      ...(row.source_contact_id === null ? {} : { sourceContactId: row.source_contact_id }),
+      ...(row.google_contact_id === null ? {} : { googleContactId: row.google_contact_id }),
+      ...(row.resource_name_snapshot === null ? {} : { resourceName: row.resource_name_snapshot }),
       name: row.name,
-      phone: row.phone,
+      ...(row.phone === null ? {} : { phone: row.phone }),
+      ...(row.phone_original === null ? {} : { phoneOriginal: row.phone_original }),
+      ...(row.phone_label === null ? {} : { phoneLabel: row.phone_label }),
       renderedMessage: row.rendered_message,
+      batchNumber: row.batch_number,
+      positionInBatch: row.position_in_batch,
+      eligibilityStatus: row.eligibility_status,
+      ...(row.result_code === null ? {} : { resultCode: row.result_code }),
+      ...(row.result_reason === null ? {} : { resultReason: row.result_reason }),
+      deletionRecommendation: row.deletion_recommendation,
+      ...(row.deletion_reason_code === null
+        ? {}
+        : { deletionReasonCode: row.deletion_reason_code }),
       status: row.status,
       attemptCount: row.attempt_count,
       ...(row.last_error === null ? {} : { lastError: row.last_error }),
@@ -302,7 +391,7 @@ export class CampaignRepository {
         )
         .run(
           `${source.name} (reenvio)`,
-          source.contactListId,
+          source.contactListId ?? null,
           source.messageTemplate,
           source.delayMinSeconds,
           source.delayMaxSeconds,
@@ -408,6 +497,16 @@ function baseQuery(where = ''): string {
       , campaigns.finished_at
       , campaigns.source_campaign_id
       , campaigns.media_id
+      , campaigns.selection_source
+      , campaigns.selection_filter_json
+      , campaigns.selection_summary_json
+      , campaigns.selection_resolved_ids_json
+      , campaigns.batch_size
+      , campaigns.batch_interval_seconds
+      , campaigns.batch_order
+      , campaigns.batch_order_seed
+      , campaigns.current_batch_number
+      , campaigns.next_batch_at
       , media.original_name AS media_original_name
       , media.mimetype AS media_mimetype
       , media.kind AS media_kind
@@ -416,7 +515,7 @@ function baseQuery(where = ''): string {
           ELSE (SELECT COUNT(*) FROM campaign_recipients recipients WHERE recipients.campaign_id = campaigns.id)
         END AS recipient_count
     FROM campaigns
-    JOIN contact_lists lists ON lists.id = campaigns.contact_list_id
+    LEFT JOIN contact_lists lists ON lists.id = campaigns.contact_list_id
     LEFT JOIN contact_list_members members ON members.contact_list_id = lists.id
     LEFT JOIN media ON media.id = campaigns.media_id
     ${where}
@@ -428,12 +527,32 @@ function toSummary(row: CampaignRow): CampaignSummary {
   return {
     id: row.id,
     name: row.name,
-    contactListId: row.contact_list_id,
-    contactListName: row.contact_list_name,
+    ...(row.contact_list_id === null ? {} : { contactListId: row.contact_list_id }),
+    contactListName: row.contact_list_name ?? 'Google Contacts',
     recipientCount: row.recipient_count,
     messageTemplate: row.message_template,
     delayMinSeconds: row.delay_min_seconds,
     delayMaxSeconds: row.delay_max_seconds,
+    selectionSource: row.selection_source,
+    ...(row.selection_filter_json === null
+      ? {}
+      : {
+          contactSelection: JSON.parse(row.selection_filter_json) as NonNullable<
+            CampaignSummary['contactSelection']
+          >,
+        }),
+    ...(row.selection_summary_json === null
+      ? {}
+      : { selectionSummary: JSON.parse(row.selection_summary_json) as Record<string, number> }),
+    ...(row.selection_resolved_ids_json === null
+      ? {}
+      : { selectionResolvedIds: JSON.parse(row.selection_resolved_ids_json) as number[] }),
+    batchSize: row.batch_size,
+    batchIntervalSeconds: row.batch_interval_seconds,
+    batchOrder: row.batch_order,
+    ...(row.batch_order_seed === null ? {} : { batchOrderSeed: row.batch_order_seed }),
+    currentBatchNumber: row.current_batch_number,
+    ...(row.next_batch_at === null ? {} : { nextBatchAt: row.next_batch_at }),
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

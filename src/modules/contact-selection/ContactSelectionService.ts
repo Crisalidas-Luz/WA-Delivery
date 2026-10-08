@@ -29,6 +29,10 @@ export interface ResolvedContactSelection {
   };
 }
 
+export interface ResolvedContactSelectionWithContacts extends ResolvedContactSelection {
+  contacts: ContactSearchItem[];
+}
+
 export class ContactSelectionService {
   public constructor(private readonly repository: ContactSelectionRepository) {}
 
@@ -122,6 +126,21 @@ export class ContactSelectionService {
       },
       contactIds: items.map((item) => item.id),
       summary,
+    };
+  }
+
+  public resolveSelectionWithContacts(
+    input: Parameters<ContactSelectionService['resolveSelection']>[0],
+  ): ResolvedContactSelectionWithContacts {
+    const resolved = this.resolveSelection(input);
+    const byId = new Map(
+      this.repository.searchByIds(resolved.contactIds).map((contact) => [contact.id, contact]),
+    );
+    return {
+      ...resolved,
+      contacts: resolved.contactIds
+        .map((id) => byId.get(id))
+        .filter((contact): contact is ContactSearchItem => contact !== undefined),
     };
   }
 }
