@@ -58,6 +58,7 @@ interface RecipientRow {
   phone: string | null;
   phone_original: string | null;
   phone_label: string | null;
+  render_data_json: string;
   rendered_message: string;
   batch_number: number;
   position_in_batch: number;
@@ -232,6 +233,7 @@ export class CampaignRepository {
       phone?: string;
       phoneOriginal?: string;
       phoneLabel?: string;
+      renderData?: Record<string, string>;
       renderedMessage: string;
       batchNumber?: number;
       positionInBatch?: number;
@@ -260,10 +262,10 @@ export class CampaignRepository {
       const insert = this.database.prepare(`
         INSERT INTO campaign_recipients (
           campaign_id, source_contact_id, google_contact_id, resource_name_snapshot, name, phone,
-          phone_original, phone_label, rendered_message, batch_number, position_in_batch,
+          phone_original, phone_label, render_data_json, rendered_message, batch_number, position_in_batch,
           eligibility_status, result_code, result_reason, deletion_recommendation,
           deletion_reason_code, status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const recipient of recipients) {
         insert.run(
@@ -275,6 +277,7 @@ export class CampaignRepository {
           recipient.phone ?? null,
           recipient.phoneOriginal ?? recipient.phone ?? null,
           recipient.phoneLabel ?? null,
+          JSON.stringify(recipient.renderData ?? {}),
           recipient.renderedMessage,
           recipient.batchNumber ?? 1,
           recipient.positionInBatch ?? 1,
@@ -300,7 +303,7 @@ export class CampaignRepository {
         .prepare(
           `
       SELECT id, campaign_id, source_contact_id, google_contact_id, resource_name_snapshot,
-        name, phone, phone_original, phone_label, rendered_message, batch_number,
+        name, phone, phone_original, phone_label, render_data_json, rendered_message, batch_number,
         position_in_batch, eligibility_status, result_code, result_reason,
         deletion_recommendation, deletion_reason_code, status, attempt_count, last_error, sent_at,
         updated_at
@@ -318,6 +321,7 @@ export class CampaignRepository {
       ...(row.phone === null ? {} : { phone: row.phone }),
       ...(row.phone_original === null ? {} : { phoneOriginal: row.phone_original }),
       ...(row.phone_label === null ? {} : { phoneLabel: row.phone_label }),
+      renderData: parseRecord(row.render_data_json),
       renderedMessage: row.rendered_message,
       batchNumber: row.batch_number,
       positionInBatch: row.position_in_batch,
@@ -592,4 +596,18 @@ function toSummary(row: CampaignRow): CampaignSummary {
           },
         }),
   };
+}
+
+function parseRecord(value: string): Record<string, string> {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed as Record<string, unknown>).filter(
+        (entry): entry is [string, string] => typeof entry[1] === 'string',
+      ),
+    );
+  } catch {
+    return {};
+  }
 }

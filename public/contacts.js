@@ -64,6 +64,7 @@ let contactTotal = 0;
 let currentFilter;
 const includedContactIds = new Set();
 const excludedContactIds = new Set();
+const phoneChoices = new Map();
 
 const contactFields = {
   displayName: 'Nome exibido',
@@ -276,6 +277,7 @@ async function runContactSearch(resetSelection = false) {
   if (resetSelection) {
     includedContactIds.clear();
     excludedContactIds.clear();
+    phoneChoices.clear();
     selectAllMatching.checked = false;
   }
   const result = await postJson('/api/contacts/search', {
@@ -317,17 +319,46 @@ function renderGoogleContacts(items) {
     });
     row.insertCell().append(checkbox);
     row.insertCell().textContent = item.displayName;
-    row.insertCell().textContent = item.phone ?? 'Sem telefone';
+    const phoneCell = row.insertCell();
+    const chosenPhoneId = phoneChoices.get(item.id);
+    const chosenPhone = item.phoneOptions?.find((phone) => phone.id === chosenPhoneId);
+    if ((item.phoneOptions?.length ?? 0) > 1) {
+      const select = document.createElement('select');
+      select.setAttribute('aria-label', `Telefone de ${item.displayName}`);
+      if (item.ambiguousPhone && !chosenPhone) {
+        select.append(new Option('Escolha o telefone', ''));
+      }
+      for (const phone of item.phoneOptions) {
+        const suffix = `${phone.primary ? ' — principal' : ''}${phone.valid ? '' : ' — inválido'}`;
+        select.append(new Option(`${phone.rawValue} (${phone.label})${suffix}`, String(phone.id)));
+      }
+      if (chosenPhone) select.value = String(chosenPhone.id);
+      select.addEventListener('change', async () => {
+        if (select.value) phoneChoices.set(item.id, Number(select.value));
+        else phoneChoices.delete(item.id);
+        try {
+          await runContactSearch(false);
+        } catch (error) {
+          showGoogleError(error.message);
+        }
+      });
+      phoneCell.append(select);
+    } else {
+      phoneCell.textContent = item.phone ?? item.phoneOriginal ?? 'Sem telefone';
+    }
     row.insertCell().textContent = item.labels.join(', ') || '—';
-    row.insertCell().textContent = item.optedOut
-      ? 'Opt-out'
-      : !item.phone
-        ? 'Sem telefone'
-        : !item.phoneValid
-          ? 'Inválido'
-          : item.duplicatePhone
-            ? 'Possível duplicado'
-            : 'Válido';
+    row.insertCell().textContent =
+      item.ambiguousPhone && !chosenPhone
+        ? 'Escolha um telefone'
+        : item.optedOut
+          ? 'Opt-out'
+          : !item.phone
+            ? 'Sem telefone'
+            : !item.phoneValid
+              ? 'Inválido'
+              : item.duplicatePhone
+                ? 'Possível duplicado'
+                : 'Válido';
   }
 }
 
@@ -337,6 +368,7 @@ async function refreshSelectionSummary() {
     ['Selecionados', resolved.summary.selected, ''],
     ['Elegíveis', resolved.summary.eligible, 'success'],
     ['Sem/inválidos', resolved.summary.missingPhone + resolved.summary.invalidPhone, 'error-tone'],
+    ['Telefone ambíguo', resolved.summary.ambiguousPhone, 'warning'],
     ['Duplicados/opt-out', resolved.summary.duplicatePhone + resolved.summary.optedOut, 'warning'],
   ]
     .map(
@@ -353,6 +385,7 @@ function selectionPayload() {
     selectAllMatching: selectAllMatching.checked,
     includedIds: [...includedContactIds],
     excludedIds: [...excludedContactIds],
+    phoneChoices: Object.fromEntries(phoneChoices),
     order: 'name',
   };
 }

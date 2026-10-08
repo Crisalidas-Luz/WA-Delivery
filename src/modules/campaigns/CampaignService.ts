@@ -270,6 +270,7 @@ export class CampaignService {
         sourceContactId: contact.id,
         name: contact.name,
         phone: contact.phone,
+        renderData: { nome: contact.name, telefone: contact.phone, ...contact.data },
         renderedMessage: renderMessage(campaign.messageTemplate, contact.name, contact.data),
         batchNumber: Math.floor(index / campaign.batchSize) + 1,
         positionInBatch: (index % campaign.batchSize) + 1,
@@ -322,10 +323,11 @@ export class CampaignService {
         name: recipient.name,
         phone: recipient.phone,
         phoneOriginal: recipient.phoneOriginal ?? recipient.phone,
+        renderData: recipient.renderData,
         renderedMessage:
           campaign.messageTemplate === source.messageTemplate
             ? recipient.renderedMessage
-            : renderMessage(campaign.messageTemplate, recipient.name),
+            : renderMessage(campaign.messageTemplate, recipient.name, recipient.renderData),
         batchNumber: Math.floor(index / campaign.batchSize) + 1,
         positionInBatch: (index % campaign.batchSize) + 1,
       })),
@@ -432,7 +434,7 @@ export class CampaignService {
         },
       ]);
     }
-    validateGoogleTemplate(input.messageTemplate);
+    validateGoogleTemplate(input.messageTemplate, resolved.contacts);
     const batchCount = Math.ceil(eligible.length / input.batchSize!);
     const intervals = Math.max(0, eligible.length - batchCount);
     const batchWait = Math.max(0, batchCount - 1) * input.batchIntervalSeconds!;
@@ -456,7 +458,7 @@ export class CampaignService {
         contactId: contact.id,
         name: contact.displayName,
         phone: contact.phone!,
-        message: renderMessage(input.messageTemplate, contact.displayName),
+        message: renderMessage(input.messageTemplate, contact.displayName, contact.templateData),
       })),
     };
   }
@@ -500,6 +502,7 @@ export class CampaignService {
       campaign.batchOrderSeed ?? 'prepared',
     );
     const classified = classifyGoogleContacts(ordered);
+    validateGoogleTemplate(campaign.messageTemplate, resolved.contacts);
     let eligiblePosition = 0;
     return this.repository.prepareDraft(
       campaign.id,
@@ -514,8 +517,9 @@ export class CampaignService {
           ...(contact.phone === undefined ? {} : { phone: contact.phone }),
           ...(contact.phoneOriginal === undefined ? {} : { phoneOriginal: contact.phoneOriginal }),
           ...(contact.phoneLabel === undefined ? {} : { phoneLabel: contact.phoneLabel }),
+          renderData: contact.templateData,
           renderedMessage: eligible
-            ? renderMessage(campaign.messageTemplate, contact.displayName)
+            ? renderMessage(campaign.messageTemplate, contact.displayName, contact.templateData)
             : '',
           batchNumber: eligible ? Math.floor(currentEligiblePosition / campaign.batchSize) + 1 : 1,
           positionInBatch: eligible
@@ -686,6 +690,7 @@ function classifyGoogleContacts(
   return contacts.map((contact) => {
     let eligibility: RecipientEligibility;
     if (contact.remoteDeleted) eligibility = 'stale_google_contact';
+    else if (contact.ambiguousPhone) eligibility = 'unknown';
     else if (contact.optedOut) eligibility = 'opted_out';
     else if (!contact.phone && contact.phoneOriginal) eligibility = 'invalid_phone';
     else if (!contact.phone) eligibility = 'missing_phone';
@@ -717,16 +722,20 @@ function sameIds(left: number[], right: number[]): boolean {
   return left.length === right.length && left.every((id, index) => id === right[index]);
 }
 
-function validateGoogleTemplate(template: string): void {
+function validateGoogleTemplate(template: string, contacts: ContactSearchItem[]): void {
+  const available = new Set(['nome']);
+  for (const contact of contacts) {
+    for (const key of Object.keys(contact.templateData)) available.add(key.toLowerCase());
+  }
   const unknown = [...template.matchAll(/\{\{\s*([^}]+?)\s*\}\}/g)]
     .map((match) => match[1]?.trim().toLowerCase())
     .filter((variable): variable is string => Boolean(variable))
-    .filter((variable) => variable !== 'nome');
+    .filter((variable) => !available.has(variable));
   if (unknown.length > 0) {
     throw new CampaignValidationError([
       {
         path: 'messageTemplate',
-        message: `Variáveis ainda não disponíveis para contatos Google: ${[...new Set(unknown)].join(', ')}.`,
+        message: `Variáveis não disponíveis nos contatos Google selecionados: ${[...new Set(unknown)].join(', ')}.`,
       },
     ]);
   }

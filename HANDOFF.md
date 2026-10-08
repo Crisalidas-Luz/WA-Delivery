@@ -254,12 +254,29 @@ Exclusão assíncrona retomável e manifesto paginado:
   páginas e filtros;
 - testes cobrem execução em segundo plano, consulta do último job e recuperação após interrupção.
 
+Escolha de telefone e variáveis Google:
+
+- resultados da agenda expõem todos os telefones com ID, label, valor bruto/canônico, validade e
+  indicador de principal;
+- quando existem vários números válidos sem um principal inequívoco, o contato fica inelegível até
+  escolha manual; a interface mostra um seletor na própria linha;
+- escolhas são validadas no backend e persistidas por contato dentro da definição versionada da
+  seleção, portanto simulação e preparo usam exatamente o mesmo telefone;
+- o resumo informa contatos com telefone ambíguo e o snapshot preserva telefone/label escolhidos;
+- dados sincronizados agora alimentam variáveis Google como nome, sobrenome, telefone, email,
+  organização, cargo, departamento, aniversário, notas, labels, endereço, URL e campos
+  personalizados normalizados;
+- `render_data_json`, que já existia no schema, passou a ser gravado e lido pelo domínio; mensagem e
+  valores usados ficam congelados no snapshot mesmo se a agenda mudar;
+- leitura individual da People API solicita o mesmo conjunto amplo de campos da sincronização;
+- testes cobrem ambiguidade/escolha persistida e renderização imutável de variável Google.
+
 ## Validações da última etapa
 
 - `npm.cmd run typecheck`: passou.
 - `npm.cmd run lint`: passou.
 - `npm.cmd run format`: passou e normalizou os arquivos alterados.
-- `npm.cmd test`: 174 testes passaram, 0 falharam.
+- `npm.cmd test`: 176 testes passaram, 0 falharam.
 - `npm.cmd run build`: passou.
 - `node --check public/contacts.js`: passou.
 - Observação do ambiente: dentro do sandbox, o loader `tsx` falhou em `uv_os_get_passwd` com
@@ -269,12 +286,12 @@ Exclusão assíncrona retomável e manifesto paginado:
 
 ## Próximo passo
 
-1. Implementar escolha manual do telefone nos contatos Google ambíguos e ampliar variáveis de
-   personalização para os campos sincronizados.
-2. Revisar onboarding/README e executar QA real de OAuth, sincronização, envio e exclusão com contas
+1. Revisar onboarding/README e executar QA real de OAuth, sincronização, envio e exclusão com contas
    de teste antes do merge.
-3. Auditar requisitos restantes do `AGENTS.md`, incluindo acessibilidade do wizard, cobertura das
+2. Auditar requisitos restantes do `AGENTS.md`, incluindo acessibilidade do wizard, cobertura das
    rotas novas e retenção/backup das auditorias.
+3. Melhorar a edição de seleções Google em rascunhos já existentes e concluir a transformação visual
+   do fluxo em wizard com etapas explícitas.
 
 ## Decisões e cuidados ativos
 

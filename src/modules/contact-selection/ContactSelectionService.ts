@@ -13,6 +13,7 @@ export interface ContactSelectionDefinition {
   selectAllMatching: boolean;
   includedIds: number[];
   excludedIds: number[];
+  phoneChoices?: Record<string, number>;
   order: 'name' | 'google';
 }
 
@@ -26,6 +27,7 @@ export interface ResolvedContactSelection {
     invalidPhone: number;
     duplicatePhone: number;
     optedOut: number;
+    ambiguousPhone: number;
   };
 }
 
@@ -65,11 +67,13 @@ export class ContactSelectionService {
     selectAllMatching?: boolean;
     includedIds?: unknown;
     excludedIds?: unknown;
+    phoneChoices?: unknown;
     order?: 'name' | 'google';
   }): ResolvedContactSelection {
     const filter = validateContactFilter(input.filter);
     const includedIds = validIds(input.includedIds);
     const excludedIds = new Set(validIds(input.excludedIds));
+    const phoneChoices = validPhoneChoices(input.phoneChoices);
     const selected = new Map<number, ContactSearchItem>();
     if (input.selectAllMatching === true) {
       let page = 1;
@@ -89,7 +93,7 @@ export class ContactSelectionService {
       for (const item of this.repository.searchByIds(includedIds)) selected.set(item.id, item);
     }
     for (const id of excludedIds) selected.delete(id);
-    const items = [...selected.values()].sort(
+    const items = applyPhoneChoices([...selected.values()], phoneChoices).sort(
       input.order === 'google'
         ? (left, right) => left.id - right.id
         : (left, right) =>
@@ -103,10 +107,12 @@ export class ContactSelectionService {
       invalidPhone: 0,
       duplicatePhone: 0,
       optedOut: 0,
+      ambiguousPhone: 0,
     };
     const selectedPhones = new Set<string>();
     for (const item of items) {
-      if (item.optedOut) summary.optedOut += 1;
+      if (item.ambiguousPhone) summary.ambiguousPhone += 1;
+      else if (item.optedOut) summary.optedOut += 1;
       else if (!item.phone) summary.missingPhone += 1;
       else if (!item.phoneValid) summary.invalidPhone += 1;
       else if (selectedPhones.has(item.phone)) summary.duplicatePhone += 1;
@@ -122,6 +128,7 @@ export class ContactSelectionService {
         selectAllMatching: input.selectAllMatching === true,
         includedIds,
         excludedIds: [...excludedIds],
+        phoneChoices,
         order: input.order ?? 'name',
       },
       contactIds: items.map((item) => item.id),
@@ -134,7 +141,10 @@ export class ContactSelectionService {
   ): ResolvedContactSelectionWithContacts {
     const resolved = this.resolveSelection(input);
     const byId = new Map(
-      this.repository.searchByIds(resolved.contactIds).map((contact) => [contact.id, contact]),
+      applyPhoneChoices(
+        this.repository.searchByIds(resolved.contactIds),
+        resolved.definition.phoneChoices ?? {},
+      ).map((contact) => [contact.id, contact]),
     );
     return {
       ...resolved,
@@ -143,6 +153,47 @@ export class ContactSelectionService {
         .filter((contact): contact is ContactSearchItem => contact !== undefined),
     };
   }
+}
+
+function validPhoneChoices(value: unknown): Record<string, number> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return {};
+  const choices: Record<string, number> = {};
+  for (const [contactId, phoneId] of Object.entries(value)) {
+    if (!/^\d+$/.test(contactId) || !Number.isSafeInteger(phoneId) || Number(phoneId) <= 0) {
+      throw new Error('A seleção contém uma escolha de telefone inválida.');
+    }
+    choices[String(Number(contactId))] = Number(phoneId);
+  }
+  if (Object.keys(choices).length > 10_000)
+    throw new Error('A seleção de telefones excede o limite de 10.000 contatos.');
+  return choices;
+}
+
+function applyPhoneChoices(
+  contacts: ContactSearchItem[],
+  choices: Record<string, number>,
+): ContactSearchItem[] {
+  return contacts.map((contact) => {
+    const phoneId = choices[String(contact.id)];
+    if (phoneId === undefined) return contact;
+    const selected = contact.phoneOptions.find((phone) => phone.id === phoneId);
+    if (!selected)
+      throw new Error(`O telefone escolhido para ${contact.displayName} não existe mais.`);
+    const { phone: _phone, ...withoutPhone } = contact;
+    return {
+      ...withoutPhone,
+      ...(selected.normalizedPhone ? { phone: selected.normalizedPhone } : {}),
+      phoneOriginal: selected.rawValue,
+      phoneLabel: selected.label,
+      phoneValid: selected.valid,
+      ambiguousPhone: false,
+      templateData: {
+        ...contact.templateData,
+        telefone: selected.normalizedPhone ?? selected.rawValue,
+        tipo_telefone: selected.label,
+      },
+    };
+  });
 }
 
 function validIds(value: unknown): number[] {

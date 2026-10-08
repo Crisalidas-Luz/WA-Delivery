@@ -174,6 +174,7 @@ describe('filtros salvos e API de seleção', () => {
         invalidPhone: 0,
         duplicatePhone: 0,
         optedOut: 0,
+        ambiguousPhone: 0,
       });
     } finally {
       database.close();
@@ -209,6 +210,48 @@ describe('filtros salvos e API de seleção', () => {
       assert.equal(resolved.summary.eligible, 1);
       assert.equal(resolved.summary.duplicatePhone, 1);
       assert.deepEqual(resolved.contactIds, [ana.id, duplicateId]);
+    } finally {
+      database.close();
+    }
+  });
+
+  it('exige escolha em telefone ambíguo e persiste a opção selecionada', () => {
+    const { database, repository } = setup();
+    try {
+      const ana = repository.search({ filter: filter('displayName', 'contains', 'ana') }).items[0];
+      assert.ok(ana);
+      database
+        .prepare(
+          `INSERT INTO google_contact_phones
+            (google_contact_id, label, raw_value, normalized_phone, is_primary, is_valid)
+           VALUES (?, 'Trabalho', '+55 16 98888-2222', '5516988882222', 0, 1)`,
+        )
+        .run(ana.id);
+      database
+        .prepare('UPDATE google_contact_phones SET is_primary = 0 WHERE google_contact_id = ?')
+        .run(ana.id);
+      const refreshed = repository.searchByIds([ana.id])[0];
+      assert.equal(refreshed?.ambiguousPhone, true);
+      assert.equal(refreshed?.phoneOptions.length, 2);
+      const chosen = refreshed?.phoneOptions.find((phone) => phone.label === 'Trabalho');
+      assert.ok(chosen);
+
+      const service = new ContactSelectionService(repository);
+      const unresolved = service.resolveSelection({
+        filter: filter('displayName', 'contains', 'ana'),
+        selectAllMatching: true,
+      });
+      assert.equal(unresolved.summary.ambiguousPhone, 1);
+      assert.equal(unresolved.summary.eligible, 0);
+      const resolved = service.resolveSelectionWithContacts({
+        filter: filter('displayName', 'contains', 'ana'),
+        selectAllMatching: true,
+        phoneChoices: { [ana.id]: chosen.id },
+      });
+      assert.equal(resolved.summary.ambiguousPhone, 0);
+      assert.equal(resolved.summary.eligible, 1);
+      assert.equal(resolved.contacts[0]?.phone, '5516988882222');
+      assert.equal(resolved.definition.phoneChoices?.[ana.id], chosen.id);
     } finally {
       database.close();
     }

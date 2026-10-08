@@ -226,7 +226,7 @@ function renderRecipientSource() {
   variablesHint.hidden = false;
   variablesHint.textContent = 'Variáveis disponíveis para contatos Google: {{nome}}';
   googleSelectionDescription.textContent = googleSelection
-    ? `${googleSelection.summary.selected} selecionados; ${googleSelection.summary.eligible} elegíveis; ${googleSelection.summary.missingPhone + googleSelection.summary.invalidPhone} sem telefone ou inválidos; ${googleSelection.summary.duplicatePhone + googleSelection.summary.optedOut} duplicados ou opt-out.`
+    ? `${googleSelection.summary.selected} selecionados; ${googleSelection.summary.eligible} elegíveis; ${googleSelection.summary.missingPhone + googleSelection.summary.invalidPhone} sem telefone ou inválidos; ${googleSelection.summary.ambiguousPhone ?? 0} com telefone a escolher; ${googleSelection.summary.duplicatePhone + googleSelection.summary.optedOut} duplicados ou opt-out.`
     : 'Nenhuma seleção foi carregada. Revise os contatos e aplique os filtros antes de continuar.';
 }
 

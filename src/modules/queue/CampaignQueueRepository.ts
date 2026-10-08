@@ -209,6 +209,7 @@ export class CampaignQueueRepository {
           name: row.name,
           phone: row.phone,
           renderedMessage: row.rendered_message,
+          renderData: {},
           status: row.status,
           attemptCount: row.attempt_count,
           batchNumber: row.batch_number,

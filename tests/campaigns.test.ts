@@ -159,6 +159,43 @@ describe('CampaignService', () => {
       database.close();
     }
   });
+
+  it('renderiza e congela variáveis sincronizadas do Google no snapshot', () => {
+    const { database, campaigns } = setupGoogleCampaigns();
+    try {
+      const ana = database
+        .prepare("SELECT id FROM google_contacts WHERE resource_name = 'people/ana'")
+        .get() as { id: number };
+      database
+        .prepare("UPDATE google_contacts SET given_name = 'Ana', raw_json = ? WHERE id = ?")
+        .run(JSON.stringify({ emailAddresses: [{ value: 'ana@example.com' }] }), ana.id);
+      const selection = {
+        ...allGoogleContacts,
+        selectAllMatching: false,
+        includedIds: [ana.id],
+      };
+      const draft = campaigns.createDraft({
+        name: 'Variáveis Google',
+        contactSelection: selection,
+        messageTemplate: 'Olá {{primeiro_nome}}, seu e-mail é {{email}}.',
+        delayMinSeconds: 1,
+        delayMaxSeconds: 1,
+      });
+      campaigns.prepareDraft(draft.id, true);
+      const recipient = campaigns.listRecipients(draft.id)?.[0];
+      assert.equal(recipient?.renderedMessage, 'Olá Ana, seu e-mail é ana@example.com.');
+      assert.equal(recipient?.renderData.email, 'ana@example.com');
+      database
+        .prepare('UPDATE google_contacts SET raw_json = ? WHERE id = ?')
+        .run(JSON.stringify({ emailAddresses: [{ value: 'novo@example.com' }] }), ana.id);
+      assert.equal(
+        campaigns.listRecipients(draft.id)?.[0]?.renderedMessage,
+        'Olá Ana, seu e-mail é ana@example.com.',
+      );
+    } finally {
+      database.close();
+    }
+  });
   it('simula duração e personaliza amostras sem enviar', () => {
     const { list, campaigns } = setup();
     const simulation = campaigns.simulate({

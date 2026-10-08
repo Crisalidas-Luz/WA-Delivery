@@ -406,7 +406,7 @@ async function load() {
   googleSelectionPanel.hidden = !usesGoogle;
   if (usesGoogle) {
     const summary = campaign.selectionSummary ?? {};
-    googleSelectionSummary.textContent = `${summary.selected ?? 0} selecionados; ${summary.eligible ?? 0} elegíveis. Os filtros e exceções estão salvos no rascunho.`;
+    googleSelectionSummary.textContent = `${summary.selected ?? 0} selecionados; ${summary.eligible ?? 0} elegíveis; ${summary.ambiguousPhone ?? 0} com telefone a escolher. Os filtros, escolhas e exceções estão salvos no rascunho.`;
   }
   messageTemplate.value = campaign.messageTemplate;
   messageCounter.textContent = `${campaign.messageTemplate.length} / 4096`;

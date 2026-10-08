@@ -33,6 +33,7 @@ export function registerContactSelectionRoutes(
       selectAllMatching?: boolean;
       includedIds?: unknown;
       excludedIds?: unknown;
+      phoneChoices?: unknown;
       order?: 'name' | 'google';
     };
   }>('/api/contacts/resolve-selection', async (request, reply) => {

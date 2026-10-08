@@ -83,6 +83,7 @@ export interface CampaignRecipientSnapshot {
   phone?: string;
   phoneOriginal?: string;
   phoneLabel?: string;
+  renderData: Record<string, string>;
   renderedMessage: string;
   batchNumber: number;
   positionInBatch: number;

@@ -156,7 +156,7 @@ export class GooglePeopleApiProvider implements GooglePeopleProvider {
     assertResourceName(resourceName);
     const params = new URLSearchParams({
       personFields:
-        'metadata,names,nicknames,phoneNumbers,organizations,birthdays,biographies,memberships',
+        'metadata,names,nicknames,phoneNumbers,emailAddresses,organizations,birthdays,biographies,memberships,addresses,relations,urls,userDefined',
     });
     const response = await this.authorizedFetch(
       tokens,

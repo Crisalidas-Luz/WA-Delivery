@@ -17,6 +17,16 @@ export interface ContactSearchItem {
   phoneOriginal?: string;
   phoneLabel?: string;
   phoneValid: boolean;
+  phoneOptions: Array<{
+    id: number;
+    label: string;
+    rawValue: string;
+    normalizedPhone?: string;
+    primary: boolean;
+    valid: boolean;
+  }>;
+  ambiguousPhone: boolean;
+  templateData: Record<string, string>;
   labels: string[];
   remoteDeleted: boolean;
   optedOut: boolean;
@@ -55,7 +65,9 @@ export class ContactSelectionRepository {
     const order = input.order === 'google' ? 'gc.id ASC' : 'LOWER(gc.display_name) ASC, gc.id ASC';
     const rows = this.database
       .prepare(
-        `SELECT gc.id, gc.resource_name, gc.display_name, gc.remote_deleted,
+        `SELECT gc.id, gc.resource_name, gc.display_name, gc.given_name, gc.middle_name,
+          gc.family_name, gc.nickname, gc.organization_name, gc.organization_title,
+          gc.organization_department, gc.birthday, gc.biography, gc.raw_json, gc.remote_deleted,
           (SELECT normalized_phone FROM google_contact_phones primary_phone
            WHERE primary_phone.google_contact_id = gc.id
            ORDER BY primary_phone.is_primary DESC, primary_phone.is_valid DESC, primary_phone.id
@@ -88,21 +100,9 @@ export class ContactSelectionRepository {
          FROM google_contacts gc WHERE ${where}
          ORDER BY ${order} LIMIT ? OFFSET ?`,
       )
-      .all(...compiled.parameters, pageSize, offset) as Array<{
-      id: number;
-      resource_name: string;
-      display_name: string;
-      remote_deleted: number;
-      phone: string | null;
-      phone_label: string | null;
-      phone_original: string | null;
-      phone_valid: number | null;
-      labels: string | null;
-      opted_out: number;
-      duplicate_phone: number;
-    }>;
+      .all(...compiled.parameters, pageSize, offset) as unknown as ContactSearchRow[];
     return {
-      items: rows.map(toSearchItem),
+      items: hydratePhoneOptions(this.database, rows.map(toSearchItem)),
       total,
       page,
       pageSize,
@@ -120,7 +120,7 @@ export class ContactSelectionRepository {
          ORDER BY gc.id ASC`,
       )
       .all(...ids) as unknown as ContactSearchRow[];
-    return rows.map(toSearchItem);
+    return hydratePhoneOptions(this.database, rows.map(toSearchItem));
   }
 
   public listSavedFilters(): SavedContactFilter[] {
@@ -172,7 +172,9 @@ export class ContactSelectionRepository {
   }
 }
 
-const contactSelectSql = `SELECT gc.id, gc.resource_name, gc.display_name, gc.remote_deleted,
+const contactSelectSql = `SELECT gc.id, gc.resource_name, gc.display_name, gc.given_name,
+  gc.middle_name, gc.family_name, gc.nickname, gc.organization_name, gc.organization_title,
+  gc.organization_department, gc.birthday, gc.biography, gc.raw_json, gc.remote_deleted,
   (SELECT normalized_phone FROM google_contact_phones primary_phone
    WHERE primary_phone.google_contact_id = gc.id
    ORDER BY primary_phone.is_primary DESC, primary_phone.is_valid DESC, primary_phone.id
@@ -207,6 +209,16 @@ interface ContactSearchRow {
   id: number;
   resource_name: string;
   display_name: string;
+  given_name: string;
+  middle_name: string;
+  family_name: string;
+  nickname: string;
+  organization_name: string;
+  organization_title: string;
+  organization_department: string;
+  birthday: string | null;
+  biography: string;
+  raw_json: string;
   remote_deleted: number;
   phone: string | null;
   phone_label: string | null;
@@ -218,6 +230,28 @@ interface ContactSearchRow {
 }
 
 function toSearchItem(row: ContactSearchRow): ContactSearchItem {
+  const labels = row.labels ? row.labels.split(String.fromCharCode(31)) : [];
+  const raw = parseObject(row.raw_json);
+  const templateData = compactTemplateData({
+    nome: row.display_name,
+    primeiro_nome: row.given_name,
+    nome_do_meio: row.middle_name,
+    sobrenome: row.family_name,
+    apelido: row.nickname,
+    telefone: row.phone ?? row.phone_original ?? '',
+    tipo_telefone: row.phone_label ?? '',
+    email: firstValue(raw.emailAddresses),
+    organizacao: row.organization_name,
+    cargo: row.organization_title,
+    departamento: row.organization_department,
+    aniversario: row.birthday ?? '',
+    notas: row.biography,
+    labels: labels.join(', '),
+    endereco: firstFormattedValue(raw.addresses),
+    url: firstValue(raw.urls),
+    relacao: firstValue(raw.relations),
+    ...userDefinedValues(raw.userDefined),
+  });
   return {
     id: row.id,
     resourceName: row.resource_name,
@@ -226,11 +260,109 @@ function toSearchItem(row: ContactSearchRow): ContactSearchItem {
     ...(row.phone_label ? { phoneLabel: row.phone_label } : {}),
     ...(row.phone_original ? { phoneOriginal: row.phone_original } : {}),
     phoneValid: row.phone_valid === 1,
-    labels: row.labels ? row.labels.split(String.fromCharCode(31)) : [],
+    phoneOptions: [],
+    ambiguousPhone: false,
+    labels,
     remoteDeleted: row.remote_deleted === 1,
     optedOut: row.opted_out === 1,
     duplicatePhone: row.duplicate_phone === 1,
+    templateData,
   };
+}
+
+function parseObject(value: string): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function firstValue(value: unknown): string {
+  if (!Array.isArray(value)) return '';
+  const first = value[0];
+  if (typeof first !== 'object' || first === null || Array.isArray(first)) return '';
+  const record = first as Record<string, unknown>;
+  return typeof record.value === 'string' ? record.value : '';
+}
+
+function firstFormattedValue(value: unknown): string {
+  if (!Array.isArray(value)) return '';
+  const first = value[0];
+  if (typeof first !== 'object' || first === null || Array.isArray(first)) return '';
+  const record = first as Record<string, unknown>;
+  return typeof record.formattedValue === 'string' ? record.formattedValue : firstValue(value);
+}
+
+function userDefinedValues(value: unknown): Record<string, string> {
+  if (!Array.isArray(value)) return {};
+  const result: Record<string, string> = {};
+  for (const item of value) {
+    if (typeof item !== 'object' || item === null || Array.isArray(item)) continue;
+    const record = item as Record<string, unknown>;
+    if (typeof record.key !== 'string' || typeof record.value !== 'string') continue;
+    const key = `personalizado_${record.key
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')}`;
+    if (key !== 'personalizado_') result[key] = record.value;
+  }
+  return result;
+}
+
+function compactTemplateData(values: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(values).filter(([, value]) => value !== ''));
+}
+
+function hydratePhoneOptions(
+  database: DatabaseSync,
+  items: ContactSearchItem[],
+): ContactSearchItem[] {
+  if (items.length === 0) return items;
+  const placeholders = items.map(() => '?').join(', ');
+  const rows = database
+    .prepare(
+      `SELECT id, google_contact_id, label, raw_value, normalized_phone, is_primary, is_valid
+       FROM google_contact_phones WHERE google_contact_id IN (${placeholders})
+       ORDER BY google_contact_id, is_primary DESC, is_valid DESC, id`,
+    )
+    .all(...items.map((item) => item.id)) as unknown as Array<{
+    id: number;
+    google_contact_id: number;
+    label: string;
+    raw_value: string;
+    normalized_phone: string | null;
+    is_primary: number;
+    is_valid: number;
+  }>;
+  const byContact = new Map<number, ContactSearchItem['phoneOptions']>();
+  for (const row of rows) {
+    const options = byContact.get(row.google_contact_id) ?? [];
+    options.push({
+      id: row.id,
+      label: row.label,
+      rawValue: row.raw_value,
+      ...(row.normalized_phone ? { normalizedPhone: row.normalized_phone } : {}),
+      primary: row.is_primary === 1,
+      valid: row.is_valid === 1,
+    });
+    byContact.set(row.google_contact_id, options);
+  }
+  return items.map((item) => {
+    const phoneOptions = byContact.get(item.id) ?? [];
+    const valid = phoneOptions.filter((phone) => phone.valid && phone.normalizedPhone);
+    const primaryValid = valid.filter((phone) => phone.primary);
+    return {
+      ...item,
+      phoneOptions,
+      ambiguousPhone: valid.length > 1 && primaryValid.length !== 1,
+    };
+  });
 }
 
 interface SavedFilterRow {
