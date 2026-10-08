@@ -1,7 +1,48 @@
 import type { FastifyInstance } from 'fastify';
 import type { GoogleAuthService } from '../modules/google-auth/GoogleAuthService.js';
+import type { GoogleOAuthConfigService } from '../modules/google-auth/GoogleOAuthConfigService.js';
 
-export function registerGoogleRoutes(server: FastifyInstance, google?: GoogleAuthService): void {
+export function registerGoogleRoutes(
+  server: FastifyInstance,
+  google?: GoogleAuthService,
+  config?: GoogleOAuthConfigService,
+): void {
+  server.get('/api/google/config', async (_request, reply) => {
+    if (!config) return reply.code(503).send({ message: 'Configuração Google indisponível.' });
+    return config.status();
+  });
+
+  server.put<{ Body: { clientId?: unknown; clientSecret?: unknown } }>(
+    '/api/google/config',
+    async (request, reply) => {
+      if (!config) return reply.code(503).send({ message: 'Configuração Google indisponível.' });
+      if (google && (await google.status()).connected) {
+        return reply.code(409).send({
+          message: 'Desconecte a conta Google antes de trocar as credenciais OAuth.',
+        });
+      }
+      if (
+        typeof request.body?.clientId !== 'string' ||
+        typeof request.body?.clientSecret !== 'string'
+      ) {
+        return reply.code(422).send({ message: 'Client ID e Client secret são obrigatórios.' });
+      }
+      await config.save(request.body.clientId, request.body.clientSecret);
+      return reply.code(200).send({ ...(await config.status()), restartRequired: true });
+    },
+  );
+
+  server.delete('/api/google/config', async (_request, reply) => {
+    if (!config) return reply.code(503).send({ message: 'Configuração Google indisponível.' });
+    if (google && (await google.status()).connected) {
+      return reply
+        .code(409)
+        .send({ message: 'Desconecte a conta Google antes de apagar as credenciais.' });
+    }
+    await config.delete();
+    return reply.code(204).send();
+  });
+
   server.get('/api/google/status', async () => {
     if (!google)
       return {
@@ -51,6 +92,6 @@ export function registerGoogleRoutes(server: FastifyInstance, google?: GoogleAut
 
 function notConfigured(reply: import('fastify').FastifyReply) {
   return reply.code(503).send({
-    message: 'Configure GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET para conectar o Google Contacts.',
+    message: 'Salve as credenciais OAuth do Google nas Configurações e reinicie o WA-Delivery.',
   });
 }

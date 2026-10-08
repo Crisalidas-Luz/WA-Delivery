@@ -366,6 +366,18 @@ const migrations = [
         CHECK (batch_wait_remaining_seconds IS NULL OR batch_wait_remaining_seconds >= 0);
     `,
   },
+  {
+    version: 13,
+    sql: `
+      CREATE TABLE google_oauth_config (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        client_id TEXT NOT NULL,
+        client_secret_store_key TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      );
+    `,
+  },
 ] as const;
 
 function migrateCampaignFlowV11(database: DatabaseSync): void {

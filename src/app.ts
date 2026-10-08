@@ -34,6 +34,11 @@ import { ContactSelectionRepository } from './modules/contact-selection/ContactS
 import { ContactSelectionService } from './modules/contact-selection/ContactSelectionService.js';
 import { ContactDeletionRepository } from './modules/contact-deletion/ContactDeletionRepository.js';
 import { ContactDeletionService } from './modules/contact-deletion/ContactDeletionService.js';
+import { GoogleOAuthConfigRepository } from './modules/google-auth/GoogleOAuthConfigRepository.js';
+import { GoogleOAuthConfigService } from './modules/google-auth/GoogleOAuthConfigService.js';
+import { ProtectedFileCredentialStore } from './providers/google/token-store/ProtectedFileCredentialStore.js';
+import { LinuxSecretServiceCredentialStore } from './providers/google/token-store/LinuxSecretServiceCredentialStore.js';
+import type { GoogleOAuthCredentialStore } from './providers/google/GoogleOAuthCredentialStore.js';
 
 /** Lê a versão da aplicação do package.json (para metadados de backup). */
 function appVersion(): string {
@@ -54,7 +59,12 @@ const settings = new SettingsService(new SettingsRepository(database));
 const contacts = new ContactService(new ContactRepository(database), settings);
 const csvImports = new CsvImportService(contacts, settings);
 const media = new MediaService(new MediaRepository(database), resolve('data/media'));
-const googleIntegration = createGoogleService();
+const googleCredentialStore = createGoogleCredentialStore();
+const googleConfig = new GoogleOAuthConfigService(
+  new GoogleOAuthConfigRepository(database),
+  googleCredentialStore,
+);
+const googleIntegration = await createGoogleService();
 const google = googleIntegration?.service;
 const contactSelection = new ContactSelectionService(new ContactSelectionRepository(database));
 const campaigns = new CampaignService(
@@ -123,6 +133,7 @@ const server = await buildServer({
   media,
   queue,
   ...(google ? { google } : {}),
+  googleConfig,
   ...(contactDeletion ? { contactDeletion } : {}),
   contactSelection,
   backup,
@@ -133,14 +144,14 @@ const server = await buildServer({
   },
 });
 
-function createGoogleService():
-  { service: GoogleAuthService; repository: GoogleContactsRepository } | undefined {
-  const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim();
-  if (!clientId || !clientSecret) return undefined;
+async function createGoogleService(): Promise<
+  { service: GoogleAuthService; repository: GoogleContactsRepository } | undefined
+> {
+  const credentials = await googleConfig.load();
+  if (!credentials) return undefined;
   const googleProvider = new GooglePeopleApiProvider({
-    clientId,
-    clientSecret,
+    clientId: credentials.clientId,
+    clientSecret: credentials.clientSecret,
     redirectUri: 'http://127.0.0.1:3000/api/google/oauth/callback',
   });
   const tokenStore = createGoogleTokenStore();
@@ -153,6 +164,19 @@ function createGoogleService():
     new GoogleContactsSyncService(repository, googleProvider, settings),
   );
   return { service, repository };
+}
+
+function createGoogleCredentialStore(): GoogleOAuthCredentialStore | undefined {
+  if (process.platform === 'win32') {
+    const localAppData = process.env.LOCALAPPDATA?.trim();
+    if (!localAppData) return undefined;
+    return new ProtectedFileCredentialStore(
+      join(localAppData, 'WA-Delivery', 'google-oauth-client.bin'),
+      new WindowsDpapiSecretProtector(),
+    );
+  }
+  if (process.platform === 'linux') return new LinuxSecretServiceCredentialStore();
+  return undefined;
 }
 
 function createGoogleTokenStore(): GoogleTokenStore | undefined {

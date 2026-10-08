@@ -48,20 +48,18 @@ As configurações, contatos, campanhas, mídias e sessão ficam armazenados loc
 
 Para usar a agenda Google como fonte principal:
 
-1. No [Google Cloud Console](https://console.cloud.google.com/), crie ou selecione um projeto.
-2. Em **APIs e serviços**, ative a **Google People API**.
-3. Configure a tela de consentimento OAuth.
-4. Crie credenciais OAuth 2.0 do tipo **Aplicativo para computador**.
-5. A aplicação usa `http://127.0.0.1:3000/api/google/oauth/callback` como callback loopback local.
-   Em credenciais do tipo **Aplicativo para computador**, o Google normalmente não exibe um campo
-   para cadastrar esse URI manualmente.
-6. Antes de iniciar a aplicação, configure as variáveis `GOOGLE_CLIENT_ID` e
-   `GOOGLE_CLIENT_SECRET` com os valores fornecidos pelo Google.
-7. Abra **Configurações > Google Contacts**, conecte a conta e execute a sincronização.
+Crie no Google Cloud um cliente OAuth 2.0 do tipo **Aplicativo para computador**, com a
+**Google People API** habilitada. Depois abra **Configurações > Google Contacts**, salve o Client ID
+e o Client secret, reinicie a aplicação e conecte a conta. As variáveis `GOOGLE_CLIENT_ID` e
+`GOOGLE_CLIENT_SECRET` continuam disponíveis como override administrativo opcional.
 
 No Windows, os tokens são cifrados com DPAPI para o usuário atual e armazenados em
 `%LOCALAPPDATA%\WA-Delivery\google-tokens.bin`. Eles persistem entre execuções para evitar logins
 frequentes, não ficam no repositório e não são incluídos no backup `.wabkp`.
+
+O Client ID e uma referência ao segredo ficam no banco local. O Client secret é cifrado com DPAPI
+no arquivo `%LOCALAPPDATA%\WA-Delivery\google-oauth-client.bin`, sem ser gravado em texto puro no
+SQLite.
 
 No Linux/WSL, instale `libsecret-tools` (o comando `secret-tool`) e tenha um Secret Service/chaveiro
 desbloqueado na sessão. Os tokens são armazenados nesse cofre do sistema e também ficam fora do

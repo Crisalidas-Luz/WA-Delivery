@@ -25,6 +25,7 @@ import type { ContactSelectionService } from '../modules/contact-selection/Conta
 import { registerContactSelectionRoutes } from './contactSelectionRoutes.js';
 import type { ContactDeletionService } from '../modules/contact-deletion/ContactDeletionService.js';
 import { registerContactDeletionRoutes } from './contactDeletionRoutes.js';
+import type { GoogleOAuthConfigService } from '../modules/google-auth/GoogleOAuthConfigService.js';
 
 export const MAX_JSON_BODY_BYTES = 1024 * 1024;
 
@@ -38,6 +39,7 @@ export interface ServerDependencies {
   queue: CampaignQueueWorker;
   backup?: BackupService;
   google?: GoogleAuthService;
+  googleConfig?: GoogleOAuthConfigService;
   contactSelection?: ContactSelectionService;
   contactDeletion?: ContactDeletionService;
   onRestored?: () => void;
@@ -106,7 +108,7 @@ export async function buildServer(dependencies: ServerDependencies): Promise<Fas
   registerMediaRoutes(server, media);
   registerQueueRoutes(server, queue);
   registerSettingsRoutes(server, settings);
-  registerGoogleRoutes(server, dependencies.google);
+  registerGoogleRoutes(server, dependencies.google, dependencies.googleConfig);
   registerContactSelectionRoutes(server, dependencies.contactSelection);
   registerContactDeletionRoutes(server, dependencies.contactDeletion);
   if (backup)

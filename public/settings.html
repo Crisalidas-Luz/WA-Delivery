@@ -145,6 +145,44 @@
         <p id="google-sync-status" class="notice" role="status" aria-live="polite" hidden></p>
         <p id="google-error" class="error" role="alert" hidden></p>
         <p id="google-success" class="success" role="status" hidden></p>
+        <form id="google-credentials-form" novalidate>
+          <fieldset>
+            <legend>Credenciais OAuth do aplicativo</legend>
+            <label>
+              Client ID
+              <input
+                id="google-client-id"
+                name="clientId"
+                type="text"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="...apps.googleusercontent.com"
+                required
+              />
+            </label>
+            <label>
+              Client secret
+              <input
+                id="google-client-secret"
+                name="clientSecret"
+                type="password"
+                autocomplete="new-password"
+                required
+              />
+              <small
+                >O segredo é protegido pelo cofre do sistema operacional; o banco guarda apenas a
+                referência. Ele nunca é exibido novamente.</small
+              >
+            </label>
+            <p id="google-config-info" class="notice" role="status"></p>
+            <div class="actions">
+              <button id="google-credentials-save" type="submit">Salvar credenciais</button>
+              <button id="google-credentials-delete" class="danger" type="button" hidden>
+                Apagar credenciais
+              </button>
+            </div>
+          </fieldset>
+        </form>
         <div class="actions">
           <button id="google-connect" type="button" hidden>Conectar conta Google</button>
           <button id="google-sync" type="button" hidden>Sincronizar contatos</button>
@@ -152,20 +190,10 @@
             Desconectar Google
           </button>
         </div>
-        <details class="setup-guide">
-          <summary>Como configurar o acesso ao Google Contacts</summary>
-          <ol>
-            <li>Abra o Google Cloud Console e crie ou selecione um projeto.</li>
-            <li>Ative a <strong>Google People API</strong>.</li>
-            <li>Configure a tela de consentimento OAuth para uso externo ou interno.</li>
-            <li>Crie credenciais OAuth do tipo <strong>Aplicativo para computador</strong>.</li>
-            <li>
-              Defina <code>GOOGLE_CLIENT_ID</code> e <code>GOOGLE_CLIENT_SECRET</code> antes de
-              iniciar o WA-Delivery.
-            </li>
-          </ol>
-          <p>O token fica protegido neste computador e não é incluído no backup.</p>
-        </details>
+        <p class="notice">
+          Crie no Google Cloud um cliente OAuth do tipo <strong>Aplicativo para computador</strong>
+          com a People API habilitada. Depois, cole as duas credenciais acima.
+        </p>
       </section>
 
       <section class="card">

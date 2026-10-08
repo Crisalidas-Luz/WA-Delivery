@@ -447,7 +447,7 @@ Busca sem acentos e matriz completa de operadores:
 
 Compatibilidade, volume e matriz de exclusão:
 
-- `AGENTS.md` reflete o schema atual v12; README documenta migrations automáticas e rollback seguro
+- `AGENTS.md` reflete o schema atual v13; README documenta migrations automáticas e rollback seguro
   por backup compatível, sem abrir banco novo com código antigo;
 - CHANGELOG registra o fluxo Google, lotes, manifesto, exclusão auditável, compatibilidade e
   endurecimentos da versão ainda não lançada;
@@ -468,6 +468,21 @@ Progresso quantitativo da sincronização:
   visível antes da sincronização terminar.
 
 ## Validações da última etapa
+
+Configuração local das credenciais OAuth (migration v13):
+
+- a página Configurações agora recebe Client ID e Client secret, valida e persiste a configuração;
+- o SQLite armazena o Client ID e uma referência opaca; o Client secret permanece fora do banco,
+  protegido por DPAPI no Windows ou Secret Service no Linux;
+- as credenciais são reutilizadas na inicialização seguinte e variáveis de ambiente continuam como
+  override administrativo;
+- a API nunca devolve o segredo e impede alteração enquanto uma conta Google estiver conectada;
+- o tutorial completo foi criado fora do repositório em
+  `C:\Users\Deia\Documents\WA-Delivery-Google-Cloud-Tutorial.md`, conforme solicitado;
+- testes cobrem persistência sem segredo no SQLite, rotas, exclusão, validação e override.
+
+- `npm run check`: passou com 203 testes, incluindo typecheck, lint, formatação e build.
+- `git diff --check`: passou.
 
 - `npm.cmd run typecheck`: passou.
 - `npm.cmd run lint`: passou.

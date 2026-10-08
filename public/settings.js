@@ -93,6 +93,12 @@ const googleConnect = document.querySelector('#google-connect');
 const googleSync = document.querySelector('#google-sync');
 const googleDisconnect = document.querySelector('#google-disconnect');
 const googleCard = document.querySelector('#google-contacts-card');
+const googleCredentialsForm = document.querySelector('#google-credentials-form');
+const googleClientId = document.querySelector('#google-client-id');
+const googleClientSecret = document.querySelector('#google-client-secret');
+const googleCredentialsSave = document.querySelector('#google-credentials-save');
+const googleCredentialsDelete = document.querySelector('#google-credentials-delete');
+const googleConfigInfo = document.querySelector('#google-config-info');
 let googleStatusPollTimer;
 
 function showGoogleError(message = '') {
@@ -117,7 +123,7 @@ async function loadGoogleStatus() {
     googleStatus.className = `status-badge ${state.connected ? 'status-sent' : 'status-pending'}`;
     googleDescription.textContent = state.configured
       ? 'A agenda Google é sincronizada para o banco local antes da seleção de campanhas.'
-      : 'Configure as credenciais locais seguindo o tutorial abaixo e reinicie a aplicação.';
+      : 'Salve as credenciais OAuth nesta tela e reinicie a aplicação para ativar a conexão.';
     googleConnect.hidden = !state.configured || state.connected;
     googleSync.hidden = !state.connected;
     googleDisconnect.hidden = !state.connected;
@@ -151,6 +157,72 @@ async function loadGoogleStatus() {
     showGoogleError(`Não foi possível consultar o Google Contacts: ${error.message}`);
   }
 }
+
+async function loadGoogleConfig() {
+  const response = await fetch('/api/google/config');
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.message || `Falha HTTP ${response.status}`);
+  googleClientId.value = body.clientId || '';
+  googleClientSecret.value = '';
+  const environment = body.source === 'environment';
+  googleClientId.disabled = environment;
+  googleClientSecret.disabled = environment;
+  googleCredentialsSave.hidden = environment;
+  googleCredentialsDelete.hidden = !body.configured || environment;
+  googleConfigInfo.textContent = environment
+    ? 'Credenciais fornecidas por variáveis de ambiente. Para alterá-las, reinicie sem essas variáveis.'
+    : body.configured
+      ? 'Credenciais locais salvas. Para trocar o segredo, informe-o novamente. Alterações entram em vigor após reiniciar o WA-Delivery.'
+      : body.secureStorageAvailable
+        ? 'Nenhuma credencial salva neste computador.'
+        : 'O cofre seguro do sistema operacional não está disponível.';
+}
+
+googleCredentialsForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  googleCredentialsSave.disabled = true;
+  showGoogleError();
+  try {
+    const response = await fetch('/api/google/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clientId: googleClientId.value.trim(),
+        clientSecret: googleClientSecret.value.trim(),
+      }),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body.message || `Falha HTTP ${response.status}`);
+    googleSuccess.textContent =
+      'Credenciais salvas com segurança. Reinicie o WA-Delivery para habilitar o botão de conexão.';
+    googleSuccess.hidden = false;
+    await loadGoogleConfig();
+  } catch (error) {
+    showGoogleError(`Não foi possível salvar as credenciais: ${error.message}`);
+  } finally {
+    googleCredentialsSave.disabled = false;
+  }
+});
+
+googleCredentialsDelete.addEventListener('click', async () => {
+  if (!confirm('Apagar as credenciais OAuth salvas neste computador?')) return;
+  googleCredentialsDelete.disabled = true;
+  showGoogleError();
+  try {
+    const response = await fetch('/api/google/config', { method: 'DELETE' });
+    if (!response.ok) {
+      const body = await response.json();
+      throw new Error(body.message || `Falha HTTP ${response.status}`);
+    }
+    googleSuccess.textContent = 'Credenciais apagadas. Reinicie o WA-Delivery para concluir.';
+    googleSuccess.hidden = false;
+    await loadGoogleConfig();
+  } catch (error) {
+    showGoogleError(`Não foi possível apagar as credenciais: ${error.message}`);
+  } finally {
+    googleCredentialsDelete.disabled = false;
+  }
+});
 
 googleConnect.addEventListener('click', async () => {
   googleConnect.disabled = true;
@@ -213,7 +285,9 @@ if (new URLSearchParams(location.search).get('google') === 'connected') {
   history.replaceState({}, '', '/settings.html');
 }
 
-void loadGoogleStatus();
+void Promise.all([loadGoogleConfig(), loadGoogleStatus()]).catch((error) => {
+  showGoogleError(`Não foi possível carregar a configuração Google: ${error.message}`);
+});
 
 const cleanupButton = document.querySelector('#cleanup-button');
 const cleanupMessage = document.querySelector('#cleanup-message');

@@ -25,7 +25,7 @@ WhatsApp usa Baileys, portanto não é uma integração oficial.
 ### 2.1 Componentes existentes
 
 - `src/app.ts`: composição das dependências e ciclo de vida da aplicação.
-- `src/database/database.ts`: schema SQLite e migrations sequenciais. O schema atual termina na v12.
+- `src/database/database.ts`: schema SQLite e migrations sequenciais. O schema atual termina na v13.
 - `src/providers/whatsapp`: abstração e implementação Baileys, QR Code, sessão persistente,
   verificação de número e envio de texto/mídia.
 - `src/modules/contacts`: listas locais, membros, normalização de telefone, importação e análise CSV.

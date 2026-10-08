@@ -30,7 +30,7 @@ export class LinuxSecretServiceGoogleTokenStore implements GoogleTokenStore {
   }
 }
 
-class SpawnSecretToolRunner implements SecretToolRunner {
+export class SpawnSecretToolRunner implements SecretToolRunner {
   public run(args: string[], stdin?: string): Promise<{ stdout: string; code: number }> {
     return new Promise((resolve, reject) => {
       const child = spawn('secret-tool', args, {
