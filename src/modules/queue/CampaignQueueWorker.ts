@@ -132,7 +132,7 @@ export class CampaignQueueWorker {
   }
 
   public recoverInterrupted(): number {
-    return this.repository.recoverInterrupted();
+    return this.repository.recoverInterrupted(this.now());
   }
 
   public start(campaignId: number, confirmed: boolean): QueueProgress {

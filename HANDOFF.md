@@ -332,12 +332,25 @@ Corrida segura durante exclusão Google:
   exclusão aceita pela chamada atual;
 - testes cobrem tanto a tradução do `404` no provedor quanto a corrida completa no job.
 
+Retomada explícita depois de reinício:
+
+- a recuperação de uma campanha que estava aguardando o próximo lote agora converte
+  `next_batch_at` em segundos restantes no instante da inicialização; o relógio fica congelado até
+  o usuário retomar;
+- a retomada restaura o prazo a partir desses segundos, sem reiniciar o intervalo completo e sem
+  consumir a espera enquanto a aplicação/campanha está parada;
+- a página da campanha sempre explica o estado pausado e exige confirmação antes de retomar;
+- o monitor também mostra a espera preservada, informa que não haverá retomada silenciosa e oferece
+  a ação explícita de retomada;
+- teste de recuperação confirma que uma espera de 90 segundos permanece salva e sem
+  `next_batch_at` enquanto pausada.
+
 ## Validações da última etapa
 
 - `npm.cmd run typecheck`: passou.
 - `npm.cmd run lint`: passou.
 - `npm.cmd run format`: passou e normalizou os arquivos alterados.
-- `npm.cmd test`: 183 testes passaram, 0 falharam.
+- `npm.cmd test`: 184 testes passaram, 0 falharam.
 - `npm.cmd run build`: passou.
 - `node --check public/settings.js` e `node --check public/campaign.js`: passaram.
 - Observação do ambiente: dentro do sandbox, o loader `tsx` falhou em `uv_os_get_passwd` com
@@ -347,9 +360,9 @@ Corrida segura durante exclusão Google:
 
 ## Próximo passo
 
-1. Melhorar o feedback de retomada da fila após reinício e durante a espera entre lotes.
-2. Revisar acessibilidade/progresso de operações longas e a cobertura do fluxo visual.
-3. Revisar o tratamento de erro ao excluir campanhas bloqueadas por auditoria incompleta.
+1. Revisar acessibilidade/progresso de operações longas e a cobertura do fluxo visual.
+2. Revisar o tratamento de erro ao excluir campanhas bloqueadas por auditoria incompleta.
+3. Auditar requisitos do `AGENTS.md` ainda sem evidência direta e ampliar testes de rotas/UI.
 4. Executar QA real de OAuth, sincronização, envio e exclusão com contas de teste antes do merge.
 
 ## Decisões e cuidados ativos

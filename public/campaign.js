@@ -441,7 +441,7 @@ function renderProgress(progress) {
   resumeCampaign.hidden = progress.status !== 'paused';
   cancelCampaign.hidden = !['ready', 'running', 'paused'].includes(progress.status);
   if (executionNotice) {
-    executionNotice.hidden = !running && !progress.waitingForNextBatch;
+    executionNotice.hidden = !running && progress.status !== 'paused';
     if (progress.waitingForNextBatch) {
       const remaining = progress.nextBatchAt
         ? Math.max(0, Math.ceil((new Date(progress.nextBatchAt).getTime() - Date.now()) / 1000))
@@ -450,6 +450,9 @@ function renderProgress(progress) {
         progress.status === 'paused'
           ? `Espera entre lotes pausada com ${remaining ?? 0}s restantes.`
           : `Aguardando o próximo lote: aproximadamente ${remaining ?? 0}s.`;
+    } else if (progress.status === 'paused') {
+      executionNotice.textContent =
+        'Campanha pausada. Revise o lote e clique em Retomar para continuar; nenhum envio será reiniciado automaticamente.';
     } else {
       executionNotice.textContent = running
         ? 'Campanha em execução. Os envios estão sendo processados.'
@@ -617,7 +620,14 @@ startCampaign.addEventListener('click', () =>
   queueAction('start', { confirmed: startConfirmation.checked }),
 );
 pauseCampaign.addEventListener('click', () => queueAction('pause'));
-resumeCampaign.addEventListener('click', () => queueAction('resume'));
+resumeCampaign.addEventListener('click', () => {
+  if (
+    confirm(
+      'Retomar esta campanha a partir da posição salva? Os destinatários pendentes voltarão a ser processados.',
+    )
+  )
+    void queueAction('resume');
+});
 cancelCampaign.addEventListener('click', () => {
   if (confirm('Cancelar esta campanha? Os destinatários pendentes não serão enviados.')) {
     void queueAction('cancel');

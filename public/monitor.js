@@ -7,6 +7,9 @@ const nameEl = document.querySelector('#monitor-name');
 const statusEl = document.querySelector('#monitor-status');
 const openLink = document.querySelector('#monitor-open');
 const sourceEl = document.querySelector('#monitor-source');
+const resumeNotice = document.querySelector('#monitor-resume-notice');
+const monitorActions = document.querySelector('#monitor-actions');
+const resumeButton = document.querySelector('#monitor-resume');
 const metricsEl = document.querySelector('#monitor-metrics');
 const barFill = document.querySelector('#monitor-bar-fill');
 const percentEl = document.querySelector('#monitor-percent');
@@ -41,8 +44,8 @@ function showError(text = '') {
   errorPanel.textContent = text;
 }
 
-async function request(path) {
-  const response = await fetch(path);
+async function request(path, options = {}) {
+  const response = await fetch(path, options);
   const body = await response.json();
   if (!response.ok) throw new Error(body.message || 'Falha na solicitação.');
   return body;
@@ -98,6 +101,15 @@ function renderProgress(progress) {
     metricsEl.append(metric);
   }
   statusEl.textContent = `Status: ${STATUS_LABELS[progress.status] || progress.status}.`;
+  const paused = progress.status === 'paused';
+  resumeNotice.hidden = !paused;
+  monitorActions.hidden = !paused;
+  if (paused) {
+    const wait = progress.batchWaitRemainingSeconds;
+    resumeNotice.textContent = progress.waitingForNextBatch
+      ? `Execução interrompida com ${formatDuration(wait)} de espera entre lotes preservada. Confirme a retomada para continuar.`
+      : 'Execução pausada na posição salva. Nenhum envio será retomado sem sua confirmação.';
+  }
   factBatch.textContent =
     progress.totalBatches > 0 ? `${progress.currentBatchNumber} de ${progress.totalBatches}` : '—';
   renderBatchWait(progress);
@@ -235,6 +247,26 @@ events.addEventListener('campaign-progress', (event) => {
   if (['completed', 'cancelled', 'failed'].includes(progress.status) && elapsedTimer) {
     clearInterval(elapsedTimer);
     elapsedTimer = undefined;
+  }
+});
+
+resumeButton.addEventListener('click', async () => {
+  if (!campaign) return;
+  if (
+    !confirm(
+      'Retomar esta campanha a partir da posição salva? Os destinatários pendentes voltarão a ser processados.',
+    )
+  )
+    return;
+  resumeButton.disabled = true;
+  showError();
+  try {
+    const progress = await request(`/api/campaigns/${campaign.id}/resume`, { method: 'POST' });
+    renderProgress(progress);
+  } catch (error) {
+    showError(error.message);
+  } finally {
+    resumeButton.disabled = false;
   }
 });
 

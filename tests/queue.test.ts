@@ -403,6 +403,28 @@ describe('CampaignQueueWorker recuperação após reinício', () => {
       database.close();
     }
   });
+
+  it('congela a espera restante entre lotes até a retomada explícita', () => {
+    const now = Date.parse('2026-10-07T12:00:00.000Z');
+    const { database, draft, repository, worker } = setup(3);
+    try {
+      database
+        .prepare(
+          `UPDATE campaigns SET status = 'running', current_batch_number = 1,
+            next_batch_at = ? WHERE id = ?`,
+        )
+        .run(new Date(now + 90_000).toISOString(), draft.id);
+      repository.recoverInterrupted(now);
+      const progress = repository.progress(draft.id);
+      assert.equal(progress?.status, 'paused');
+      assert.equal(progress?.nextBatchAt, undefined);
+      assert.equal(progress?.batchWaitRemainingSeconds, 90);
+      assert.equal(progress?.waitingForNextBatch, true);
+    } finally {
+      worker.shutdown();
+      database.close();
+    }
+  });
 });
 
 describe('CampaignQueueWorker disconnection', () => {

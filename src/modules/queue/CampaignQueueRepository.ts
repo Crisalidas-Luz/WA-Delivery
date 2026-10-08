@@ -20,7 +20,7 @@ export class CampaignQueueRepository {
    * Rodar novamente não produz efeitos (nenhum registro em 'sending'/'running').
    * Retorna quantos destinatários foram marcados como interrompidos.
    */
-  public recoverInterrupted(): number {
+  public recoverInterrupted(nowMs = Date.now()): number {
     this.database.exec('BEGIN IMMEDIATE');
     try {
       const error = 'Envio interrompido durante o encerramento; reenvie manualmente se necessário.';
@@ -45,6 +45,23 @@ export class CampaignQueueRepository {
       `,
         )
         .run(error);
+      const interruptedBatchWaits = this.database
+        .prepare(
+          `SELECT id, next_batch_at FROM campaigns
+           WHERE status = 'running' AND next_batch_at IS NOT NULL`,
+        )
+        .all() as Array<{ id: number; next_batch_at: string }>;
+      const freezeWait = this.database.prepare(
+        `UPDATE campaigns SET next_batch_at = NULL, batch_wait_remaining_seconds = ?
+         WHERE id = ? AND status = 'running'`,
+      );
+      for (const campaign of interruptedBatchWaits) {
+        const remaining = Math.max(
+          0,
+          Math.ceil((Date.parse(campaign.next_batch_at) - nowMs) / 1_000),
+        );
+        freezeWait.run(remaining, campaign.id);
+      }
       this.database
         .prepare(
           "UPDATE campaigns SET status = 'paused', updated_at = CURRENT_TIMESTAMP WHERE status = 'running'",
