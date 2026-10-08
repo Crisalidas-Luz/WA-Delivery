@@ -10,28 +10,8 @@ pendências e próximo passo. Não substituir o plano completo de produto em `AG
 
 - Branch de desenvolvimento: `feat/google-contacts-campaign-flow`
 - Base: `main` no commit `cfc3881`
-- Etapa em andamento: Fase 2 — filtros e seleção
+- Etapa em andamento: Fase 3 — campanhas Google e lotes
 - Merge para `main`: proibido até validação integral e aprovação do usuário
-- Sessão pausada a pedido do usuário em 2026-10-07.
-
-### Checkpoint WIP da pausa
-
-- Último marco integralmente validado e publicado: `a521a9a` (`feat: add campaign selection and
-  batch schema`), com 162 testes, lint, typecheck e build aprovados.
-- Trabalho iniciado depois desse marco: conexão da migration v11 aos tipos, ao
-  `CampaignRepository`, ao `CampaignService` e à fila; também foi adicionado
-  `resolveSelectionWithContacts` ao serviço de seleção.
-- O trabalho pós-`a521a9a` está deliberadamente incompleto e deve ser retomado como WIP. O
-  `CampaignService` já referencia os métodos auxiliares `simulateGoogle`, `requireGoogleSelection`
-  e `prepareGoogleDraft`, mas eles ainda precisam ser implementados.
-- O typecheck ainda precisa ser reexecutado e corrigido. Antes da pausa, os erros conhecidos
-  incluíam adaptação do worker para telefone opcional no manifesto, follow-up de snapshots Google,
-  retorno dos novos campos de simulação e narrowing de `contactListId`; algumas dessas correções já
-  começaram, mas não foram validadas após o último patch.
-- Não tratar o próximo commit WIP como etapa funcional. Ao retomar: concluir os três helpers do
-  serviço, ajustar fila/follow-up/exportação, compor `ContactSelectionService` antes de
-  `CampaignService` em `app.ts`, adicionar testes Google de simulação/rascunho/preparo e só então
-  rodar format, typecheck, lint, build e suíte completa.
 
 ## Progresso
 
@@ -153,12 +133,29 @@ Fundação de campanhas Google e lotes (migration v11):
 - teste explícito cobre campanha Google sem lista, inelegível sem telefone, limites e manutenção das
   chaves estrangeiras, além dos upgrades legados existentes.
 
+Integração do domínio de campanhas Google concluída após o checkpoint `ff241f2`:
+
+- simulação e rascunho resolvem a seleção no backend e persistem AST, resumo, IDs e configuração de
+  lotes, sem depender de uma lista local;
+- duração considera intervalos entre mensagens dentro do lote e a espera entre lotes;
+- preparo recalcula a seleção e exige nova revisão quando a agenda mudou desde o rascunho;
+- snapshot inclui elegíveis e inelegíveis, com vínculo Google, telefone bruto/canônico, posição no
+  lote, motivo estruturado e recomendação conservadora de exclusão;
+- duplicidade é determinada na ordem final e mantém um vencedor determinístico; ordem aleatória usa
+  seed persistida;
+- fila busca somente snapshots `eligible` com telefone e segue lote/posição; follow-up e exportação
+  foram adaptados aos campos opcionais e vínculos Google;
+- composição real do `CampaignService` agora recebe o mesmo `ContactSelectionService` usado pelas
+  rotas;
+- testes cobrem simulação, persistência, formação de lotes, manifesto de inelegíveis e bloqueio do
+  preparo quando a agenda muda.
+
 ## Validações da última etapa
 
 - `npm.cmd run typecheck`: passou.
 - `npm.cmd run lint`: passou.
 - `npm.cmd run format`: passou e normalizou os arquivos alterados.
-- `npm.cmd test`: 162 testes passaram, 0 falharam.
+- `npm.cmd test`: 164 testes passaram, 0 falharam.
 - `npm.cmd run build`: passou.
 - `node --check public/contacts.js`: passou.
 - Observação do ambiente: dentro do sandbox, o loader `tsx` falhou em `uv_os_get_passwd` com
@@ -168,10 +165,9 @@ Fundação de campanhas Google e lotes (migration v11):
 
 ## Próximo passo
 
-1. Integrar os novos campos ao domínio/repositório de campanhas e consumir a seleção Google no
-   simulador, rascunho e preparo do snapshot.
-2. Evoluir o editor visual para grupos `E`/`OU` aninhados sem perder ASTs já salvas.
-3. Implementar execução persistente dos lotes sobre a fundação da migration v11.
+1. Integrar seleção e configuração de lotes ao compositor/wizard de campanhas.
+2. Implementar execução persistente e espera retomável entre lotes.
+3. Evoluir o editor visual para grupos `E`/`OU` aninhados sem perder ASTs já salvas.
 
 ## Decisões e cuidados ativos
 

@@ -83,8 +83,9 @@ export class CampaignRepository {
           `
         INSERT INTO campaigns (
           name, contact_list_id, message_template, delay_min_seconds, delay_max_seconds, media_id,
-          selection_source, selection_filter_json, batch_size, batch_interval_seconds, batch_order
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          selection_source, selection_filter_json, batch_size, batch_interval_seconds, batch_order,
+          batch_order_seed
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
         )
         .run(
@@ -99,6 +100,7 @@ export class CampaignRepository {
           input.batchSize ?? 100,
           input.batchIntervalSeconds ?? 0,
           input.batchOrder ?? 'name',
+          input.batchOrderSeed ?? null,
         );
       if (input.mediaId !== undefined) {
         this.database
@@ -161,7 +163,7 @@ export class CampaignRepository {
         UPDATE campaigns
         SET name = ?, contact_list_id = ?, message_template = ?, delay_min_seconds = ?,
             delay_max_seconds = ?, media_id = ?, selection_source = ?, selection_filter_json = ?,
-            batch_size = ?, batch_interval_seconds = ?, batch_order = ?,
+            batch_size = ?, batch_interval_seconds = ?, batch_order = ?, batch_order_seed = ?,
             updated_at = CURRENT_TIMESTAMP
         WHERE id = ? AND status = 'draft'
       `,
@@ -178,6 +180,7 @@ export class CampaignRepository {
           input.batchSize ?? 100,
           input.batchIntervalSeconds ?? 0,
           input.batchOrder ?? 'name',
+          input.batchOrderSeed ?? null,
           id,
         );
       if (mediaChanged && nextMediaId !== null) {
@@ -372,10 +375,16 @@ export class CampaignRepository {
   public createFollowUp(
     source: CampaignSummary,
     pending: Array<{
-      sourceContactId: number;
+      sourceContactId?: number;
+      googleContactId?: number;
+      resourceName?: string;
       name: string;
       phone: string;
+      phoneOriginal?: string;
+      phoneLabel?: string;
       renderedMessage: string;
+      batchNumber: number;
+      positionInBatch: number;
     }>,
   ): CampaignSummary {
     this.database.exec('BEGIN IMMEDIATE');
@@ -385,8 +394,10 @@ export class CampaignRepository {
           `
         INSERT INTO campaigns (
           name, contact_list_id, message_template, delay_min_seconds, delay_max_seconds,
-          media_id, source_campaign_id, status, prepared_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'ready', CURRENT_TIMESTAMP)
+          media_id, source_campaign_id, status, prepared_at, selection_source,
+          selection_filter_json, selection_summary_json, selection_resolved_ids_json,
+          batch_size, batch_interval_seconds, batch_order, batch_order_seed
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'ready', CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
         )
         .run(
@@ -397,6 +408,14 @@ export class CampaignRepository {
           source.delayMaxSeconds,
           source.media?.id ?? null,
           source.id,
+          source.selectionSource,
+          source.contactSelection ? JSON.stringify(source.contactSelection) : null,
+          source.selectionSummary ? JSON.stringify(source.selectionSummary) : null,
+          source.selectionResolvedIds ? JSON.stringify(source.selectionResolvedIds) : null,
+          source.batchSize,
+          source.batchIntervalSeconds,
+          source.batchOrder,
+          source.batchOrderSeed ?? null,
         );
       const newId = Number(result.lastInsertRowid);
       if (source.media?.id !== undefined) {
@@ -406,16 +425,23 @@ export class CampaignRepository {
       }
       const insert = this.database.prepare(`
         INSERT INTO campaign_recipients (
-          campaign_id, source_contact_id, name, phone, rendered_message
-        ) VALUES (?, ?, ?, ?, ?)
+          campaign_id, source_contact_id, google_contact_id, resource_name_snapshot, name, phone,
+          phone_original, phone_label, rendered_message, batch_number, position_in_batch
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const recipient of pending) {
         insert.run(
           newId,
-          recipient.sourceContactId,
+          recipient.sourceContactId ?? null,
+          recipient.googleContactId ?? null,
+          recipient.resourceName ?? null,
           recipient.name,
           recipient.phone,
+          recipient.phoneOriginal ?? recipient.phone,
+          recipient.phoneLabel ?? null,
           recipient.renderedMessage,
+          recipient.batchNumber,
+          recipient.positionInBatch,
         );
       }
       this.database.exec('COMMIT');
@@ -511,7 +537,9 @@ function baseQuery(where = ''): string {
       , media.mimetype AS media_mimetype
       , media.kind AS media_kind
       , media.size_bytes AS media_size_bytes
-      , CASE WHEN campaigns.status = 'draft' THEN COUNT(members.id)
+      , CASE WHEN campaigns.status = 'draft' AND campaigns.selection_source = 'google'
+          THEN COALESCE(json_extract(campaigns.selection_summary_json, '$.eligible'), 0)
+          WHEN campaigns.status = 'draft' THEN COUNT(members.id)
           ELSE (SELECT COUNT(*) FROM campaign_recipients recipients WHERE recipients.campaign_id = campaigns.id)
         END AS recipient_count
     FROM campaigns

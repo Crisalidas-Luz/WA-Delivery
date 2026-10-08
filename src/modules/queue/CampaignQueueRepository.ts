@@ -2,8 +2,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { CampaignRecipientSnapshot, CampaignSummary } from '../campaigns/campaignTypes.js';
 import type { QueueProgress } from './queueTypes.js';
 
-interface QueueRecipient
-  extends Omit<CampaignRecipientSnapshot, 'phone' | 'sourceContactId'> {
+interface QueueRecipient extends Omit<CampaignRecipientSnapshot, 'phone' | 'sourceContactId'> {
   phone: string;
   sourceContactId?: number;
 }

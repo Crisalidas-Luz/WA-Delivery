@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { ContactService } from '../contacts/ContactService.js';
 import type {
   ContactSelectionService,
@@ -6,6 +7,7 @@ import type {
 import type { ContactSearchItem } from '../contact-selection/ContactSelectionRepository.js';
 import type { MediaService } from '../media/MediaService.js';
 import { CampaignRepository } from './CampaignRepository.js';
+import { deletionRecommendationFor, type RecipientEligibility } from './campaignResultTypes.js';
 import {
   CampaignValidationError,
   type CampaignComposerInput,
@@ -70,7 +72,9 @@ export class CampaignService {
       ]);
     }
 
-    const intervals = Math.max(0, eligible.length - 1);
+    const batchCount = Math.ceil(eligible.length / validated.batchSize!);
+    const intervals = Math.max(0, eligible.length - batchCount);
+    const batchWait = Math.max(0, batchCount - 1) * validated.batchIntervalSeconds!;
     return {
       contactListId: list.id,
       contactListName: list.name,
@@ -79,13 +83,13 @@ export class CampaignService {
       optedOutCount,
       delayMinSeconds: validated.delayMinSeconds,
       delayMaxSeconds: validated.delayMaxSeconds,
-      durationMinSeconds: intervals * validated.delayMinSeconds,
+      durationMinSeconds: intervals * validated.delayMinSeconds + batchWait,
       durationAverageSeconds: Math.round(
-        intervals * ((validated.delayMinSeconds + validated.delayMaxSeconds) / 2),
+        intervals * ((validated.delayMinSeconds + validated.delayMaxSeconds) / 2) + batchWait,
       ),
-      durationMaxSeconds: intervals * validated.delayMaxSeconds,
+      durationMaxSeconds: intervals * validated.delayMaxSeconds + batchWait,
       batchSize: validated.batchSize!,
-      batchCount: Math.ceil(eligible.length / validated.batchSize!),
+      batchCount,
       batchIntervalSeconds: validated.batchIntervalSeconds!,
       batchOrder: validated.batchOrder!,
       samples: eligible.slice(0, 3).map((contact) => ({
@@ -99,7 +103,7 @@ export class CampaignService {
 
   public createDraft(input: CampaignComposerInput): CampaignSummary {
     const validated = this.validate(input, true);
-    const simulation = this.simulate(validated);
+    this.simulate(validated);
     const campaign = this.repository.createDraft(
       validated as CampaignComposerInput & { name: string },
     );
@@ -108,7 +112,6 @@ export class CampaignService {
       this.repository.saveSelectionResolution(campaign.id, resolved.summary, resolved.contactIds);
       return this.repository.findById(campaign.id)!;
     }
-    void simulation;
     return campaign;
   }
 
@@ -139,7 +142,11 @@ export class CampaignService {
     }
     if (validated.contactSelection) {
       const resolved = this.requireGoogleSelection(validated.contactSelection);
-      this.repository.saveSelectionResolution(updated.campaign.id, resolved.summary, resolved.contactIds);
+      this.repository.saveSelectionResolution(
+        updated.campaign.id,
+        resolved.summary,
+        resolved.contactIds,
+      );
       return this.repository.findById(updated.campaign.id);
     }
     return updated.campaign;
@@ -192,7 +199,13 @@ export class CampaignService {
     const optedOut = this.contacts.optedOutPhones();
     const pending = this.repository
       .listRecipients(id)
-      .filter((recipient) => recipient.status !== 'sent' && !optedOut.has(recipient.phone));
+      .filter(
+        (recipient): recipient is CampaignRecipientSnapshot & { phone: string } =>
+          recipient.status !== 'sent' &&
+          recipient.phone !== undefined &&
+          recipient.eligibilityStatus === 'eligible' &&
+          !optedOut.has(recipient.phone),
+      );
     if (pending.length === 0) {
       throw new CampaignValidationError([
         {
@@ -204,10 +217,22 @@ export class CampaignService {
     return this.repository.createFollowUp(
       source,
       pending.map((recipient) => ({
-        sourceContactId: recipient.sourceContactId,
+        ...(recipient.sourceContactId === undefined
+          ? {}
+          : { sourceContactId: recipient.sourceContactId }),
+        ...(recipient.googleContactId === undefined
+          ? {}
+          : { googleContactId: recipient.googleContactId }),
+        ...(recipient.resourceName === undefined ? {} : { resourceName: recipient.resourceName }),
         name: recipient.name,
         phone: recipient.phone,
+        ...(recipient.phoneOriginal === undefined
+          ? {}
+          : { phoneOriginal: recipient.phoneOriginal }),
+        ...(recipient.phoneLabel === undefined ? {} : { phoneLabel: recipient.phoneLabel }),
         renderedMessage: recipient.renderedMessage,
+        batchNumber: recipient.batchNumber,
+        positionInBatch: recipient.positionInBatch,
       })),
     );
   }
@@ -221,7 +246,7 @@ export class CampaignService {
     const campaign = this.repository.findById(id);
     if (!campaign || campaign.status !== 'draft') return undefined;
     if (campaign.selectionSource === 'google') return this.prepareGoogleDraft(campaign);
-    const list = this.contacts.findById(campaign.contactListId);
+    const list = this.contacts.findById(campaign.contactListId!);
     if (!list || list.contacts.length === 0) {
       throw new CampaignValidationError([
         { path: 'contactListId', message: 'A lista selecionada não existe ou está vazia.' },
@@ -270,12 +295,134 @@ export class CampaignService {
     const lines = [header.map(csvCell).join(',')];
     for (const r of rows) {
       lines.push(
-        [r.name, r.phone, r.status, String(r.attemptCount), r.sentAt ?? '', r.lastError ?? '']
+        [r.name, r.phone ?? '', r.status, String(r.attemptCount), r.sentAt ?? '', r.lastError ?? '']
           .map(csvCell)
           .join(','),
       );
     }
     return `${lines.join('\r\n')}\r\n`;
+  }
+
+  private simulateGoogle(input: CampaignComposerInput): CampaignSimulation {
+    const resolved = this.requireGoogleSelection(input.contactSelection!);
+    const ordered = orderGoogleContacts(
+      resolved.contacts,
+      input.batchOrder!,
+      input.batchOrderSeed ?? 'simulation',
+    );
+    const classified = classifyGoogleContacts(ordered);
+    const eligible = classified.filter((entry) => entry.eligibility === 'eligible');
+    if (eligible.length === 0) {
+      throw new CampaignValidationError([
+        {
+          path: 'contactSelection',
+          message: 'A seleção não possui contatos elegíveis para envio.',
+        },
+      ]);
+    }
+    validateGoogleTemplate(input.messageTemplate);
+    const batchCount = Math.ceil(eligible.length / input.batchSize!);
+    const intervals = Math.max(0, eligible.length - batchCount);
+    const batchWait = Math.max(0, batchCount - 1) * input.batchIntervalSeconds!;
+    return {
+      contactListName: 'Google Contacts',
+      selectionSource: 'google',
+      recipientCount: eligible.length,
+      optedOutCount: classified.filter((entry) => entry.eligibility === 'opted_out').length,
+      delayMinSeconds: input.delayMinSeconds,
+      delayMaxSeconds: input.delayMaxSeconds,
+      durationMinSeconds: intervals * input.delayMinSeconds + batchWait,
+      durationAverageSeconds: Math.round(
+        intervals * ((input.delayMinSeconds + input.delayMaxSeconds) / 2) + batchWait,
+      ),
+      durationMaxSeconds: intervals * input.delayMaxSeconds + batchWait,
+      batchSize: input.batchSize!,
+      batchCount,
+      batchIntervalSeconds: input.batchIntervalSeconds!,
+      batchOrder: input.batchOrder!,
+      samples: eligible.slice(0, 3).map(({ contact }) => ({
+        contactId: contact.id,
+        name: contact.displayName,
+        phone: contact.phone!,
+        message: renderMessage(input.messageTemplate, contact.displayName),
+      })),
+    };
+  }
+
+  private requireGoogleSelection(
+    definition: NonNullable<CampaignComposerInput['contactSelection']>,
+  ): ResolvedContactSelectionWithContacts {
+    if (!this.contactSelection) {
+      throw new CampaignValidationError([
+        { path: 'contactSelection', message: 'A seleção Google não está disponível.' },
+      ]);
+    }
+    const resolved = this.contactSelection.resolveSelectionWithContacts(definition);
+    if (resolved.contactIds.length !== resolved.contacts.length) {
+      throw new CampaignValidationError([
+        { path: 'contactSelection', message: 'Alguns contatos selecionados já não existem.' },
+      ]);
+    }
+    return resolved;
+  }
+
+  private prepareGoogleDraft(campaign: CampaignSummary): CampaignSummary | undefined {
+    if (!campaign.contactSelection) {
+      throw new CampaignValidationError([
+        { path: 'contactSelection', message: 'O rascunho não possui uma seleção Google válida.' },
+      ]);
+    }
+    const resolved = this.requireGoogleSelection(campaign.contactSelection);
+    if (!sameIds(resolved.contactIds, campaign.selectionResolvedIds ?? [])) {
+      throw new CampaignValidationError([
+        {
+          path: 'contactSelection',
+          message:
+            'A agenda mudou desde a simulação. Revise e salve novamente a seleção antes de preparar.',
+        },
+      ]);
+    }
+    const ordered = orderGoogleContacts(
+      resolved.contacts,
+      campaign.batchOrder,
+      campaign.batchOrderSeed ?? 'prepared',
+    );
+    const classified = classifyGoogleContacts(ordered);
+    let eligiblePosition = 0;
+    return this.repository.prepareDraft(
+      campaign.id,
+      classified.map(({ contact, eligibility }, index) => {
+        const eligible = eligibility === 'eligible';
+        const currentEligiblePosition = eligible ? eligiblePosition++ : 0;
+        const reason = eligibilityReason(eligibility);
+        return {
+          googleContactId: contact.id,
+          resourceName: contact.resourceName,
+          name: contact.displayName,
+          ...(contact.phone === undefined ? {} : { phone: contact.phone }),
+          ...(contact.phoneOriginal === undefined ? {} : { phoneOriginal: contact.phoneOriginal }),
+          ...(contact.phoneLabel === undefined ? {} : { phoneLabel: contact.phoneLabel }),
+          renderedMessage: eligible
+            ? renderMessage(campaign.messageTemplate, contact.displayName)
+            : '',
+          batchNumber: eligible ? Math.floor(currentEligiblePosition / campaign.batchSize) + 1 : 1,
+          positionInBatch: eligible
+            ? (currentEligiblePosition % campaign.batchSize) + 1
+            : index + 1,
+          eligibilityStatus: eligibility,
+          ...(eligible
+            ? {}
+            : {
+                resultCode: eligibility === 'opted_out' ? 'skipped_opt_out' : 'validation_failure',
+                resultReason: reason,
+              }),
+          deletionRecommendation: deletionRecommendationFor(eligibility),
+          ...(['missing_phone', 'invalid_phone'].includes(eligibility)
+            ? { deletionReasonCode: eligibility }
+            : {}),
+        };
+      }),
+    );
   }
 
   private validate(
@@ -287,14 +434,18 @@ export class CampaignService {
     const name = typeof input.name === 'string' ? input.name.trim() : '';
     const messageTemplate =
       typeof input.messageTemplate === 'string' ? input.messageTemplate.trim() : '';
-    const contactListId = input.contactListId === undefined ? undefined : Number(input.contactListId);
+    const contactListId =
+      input.contactListId === undefined ? undefined : Number(input.contactListId);
     const delayMinSeconds = Number(input.delayMinSeconds);
     const delayMaxSeconds = Number(input.delayMaxSeconds);
     const mediaId =
       input.mediaId === undefined || input.mediaId === null ? input.mediaId : Number(input.mediaId);
 
     if (requireName && !name) issues.push({ path: 'name', message: 'Informe o nome da campanha.' });
-    if (!input.contactSelection && (!Number.isSafeInteger(contactListId) || Number(contactListId) <= 0)) {
+    if (
+      !input.contactSelection &&
+      (!Number.isSafeInteger(contactListId) || Number(contactListId) <= 0)
+    ) {
       issues.push({ path: 'contactListId', message: 'Selecione uma lista de contatos.' });
     }
     if (input.contactSelection && !this.contactSelection) {
@@ -304,6 +455,8 @@ export class CampaignService {
     const batchIntervalSeconds =
       input.batchIntervalSeconds === undefined ? 0 : Number(input.batchIntervalSeconds);
     const batchOrder = input.batchOrder ?? 'name';
+    const batchOrderSeed =
+      batchOrder === 'random' ? (input.batchOrderSeed ?? randomUUID()) : undefined;
     if (!Number.isSafeInteger(batchSize) || batchSize < 1 || batchSize > 100) {
       issues.push({ path: 'batchSize', message: 'O lote deve conter de 1 a 100 contatos.' });
     }
@@ -312,7 +465,10 @@ export class CampaignService {
       batchIntervalSeconds < 0 ||
       batchIntervalSeconds > 172_800
     ) {
-      issues.push({ path: 'batchIntervalSeconds', message: 'O intervalo entre lotes deve estar entre 0 e 48 horas.' });
+      issues.push({
+        path: 'batchIntervalSeconds',
+        message: 'O intervalo entre lotes deve estar entre 0 e 48 horas.',
+      });
     }
     if (!['name', 'google', 'random'].includes(batchOrder)) {
       issues.push({ path: 'batchOrder', message: 'Escolha uma ordenação de lotes válida.' });
@@ -377,8 +533,90 @@ export class CampaignService {
       batchSize,
       batchIntervalSeconds,
       batchOrder,
+      ...(batchOrderSeed === undefined ? {} : { batchOrderSeed }),
       ...(mediaId === undefined ? {} : { mediaId }),
     };
+  }
+}
+
+function orderGoogleContacts(
+  contacts: ContactSearchItem[],
+  order: NonNullable<CampaignComposerInput['batchOrder']>,
+  seed: string,
+): ContactSearchItem[] {
+  const ordered = [...contacts];
+  if (order === 'google') return ordered.sort((left, right) => left.id - right.id);
+  if (order === 'random') {
+    return ordered.sort(
+      (left, right) => seededRank(seed, left.id) - seededRank(seed, right.id) || left.id - right.id,
+    );
+  }
+  return ordered.sort(
+    (left, right) =>
+      left.displayName.localeCompare(right.displayName, 'pt-BR', { sensitivity: 'base' }) ||
+      left.id - right.id,
+  );
+}
+
+function seededRank(seed: string, id: number): number {
+  let hash = 2_166_136_261;
+  for (const character of `${seed}:${id}`) {
+    hash ^= character.charCodeAt(0);
+    hash = Math.imul(hash, 16_777_619);
+  }
+  return hash >>> 0;
+}
+
+function classifyGoogleContacts(
+  contacts: ContactSearchItem[],
+): Array<{ contact: ContactSearchItem; eligibility: RecipientEligibility }> {
+  const phones = new Set<string>();
+  return contacts.map((contact) => {
+    let eligibility: RecipientEligibility;
+    if (contact.remoteDeleted) eligibility = 'stale_google_contact';
+    else if (contact.optedOut) eligibility = 'opted_out';
+    else if (!contact.phone && contact.phoneOriginal) eligibility = 'invalid_phone';
+    else if (!contact.phone) eligibility = 'missing_phone';
+    else if (!contact.phoneValid) eligibility = 'invalid_phone';
+    else if (phones.has(contact.phone)) eligibility = 'duplicate_phone';
+    else {
+      phones.add(contact.phone);
+      eligibility = 'eligible';
+    }
+    return { contact, eligibility };
+  });
+}
+
+function eligibilityReason(eligibility: RecipientEligibility): string {
+  const reasons: Record<RecipientEligibility, string> = {
+    eligible: 'Contato elegível para envio.',
+    missing_phone: 'O contato não possui telefone utilizável.',
+    invalid_phone: 'O telefone do contato é estruturalmente inválido.',
+    duplicate_phone: 'Outro contato selecionado representa o mesmo telefone.',
+    opted_out: 'O telefone está marcado como opt-out.',
+    not_on_whatsapp: 'O WhatsApp informou que o número não está registrado.',
+    stale_google_contact: 'O contato não existe mais na agenda Google.',
+    unknown: 'Não foi possível concluir a validação do contato.',
+  };
+  return reasons[eligibility];
+}
+
+function sameIds(left: number[], right: number[]): boolean {
+  return left.length === right.length && left.every((id, index) => id === right[index]);
+}
+
+function validateGoogleTemplate(template: string): void {
+  const unknown = [...template.matchAll(/\{\{\s*([^}]+?)\s*\}\}/g)]
+    .map((match) => match[1]?.trim().toLowerCase())
+    .filter((variable): variable is string => Boolean(variable))
+    .filter((variable) => variable !== 'nome');
+  if (unknown.length > 0) {
+    throw new CampaignValidationError([
+      {
+        path: 'messageTemplate',
+        message: `Variáveis ainda não disponíveis para contatos Google: ${[...new Set(unknown)].join(', ')}.`,
+      },
+    ]);
   }
 }
 

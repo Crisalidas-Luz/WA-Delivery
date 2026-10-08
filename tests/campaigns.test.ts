@@ -6,6 +6,8 @@ import { CampaignService, renderMessage } from '../src/modules/campaigns/Campaig
 import { CampaignValidationError } from '../src/modules/campaigns/campaignTypes.js';
 import { ContactRepository } from '../src/modules/contacts/ContactRepository.js';
 import { ContactService } from '../src/modules/contacts/ContactService.js';
+import { ContactSelectionRepository } from '../src/modules/contact-selection/ContactSelectionRepository.js';
+import { ContactSelectionService } from '../src/modules/contact-selection/ContactSelectionService.js';
 import { MediaRepository } from '../src/modules/media/MediaRepository.js';
 import { MediaService } from '../src/modules/media/MediaService.js';
 
@@ -31,7 +33,131 @@ function setup() {
   };
 }
 
+function setupGoogleCampaigns() {
+  const database = openDatabase(':memory:');
+  database
+    .prepare(
+      `INSERT INTO google_accounts
+        (id, google_subject, email, display_name, token_store_key)
+       VALUES (1, 'subject', 'user@example.com', 'User', 'google:subject')`,
+    )
+    .run();
+  const insertContact = database.prepare(
+    `INSERT INTO google_contacts (account_id, resource_name, display_name, raw_json)
+     VALUES (1, ?, ?, '{}')`,
+  );
+  const insertPhone = database.prepare(
+    `INSERT INTO google_contact_phones
+      (google_contact_id, label, raw_value, normalized_phone, is_primary, is_valid)
+     VALUES (?, 'Celular', ?, ?, 1, ?)`,
+  );
+  const ana = Number(insertContact.run('people/ana', 'Ana').lastInsertRowid);
+  const bia = Number(insertContact.run('people/bia', 'Bia').lastInsertRowid);
+  const bruno = Number(insertContact.run('people/bruno', 'Bruno').lastInsertRowid);
+  const carla = Number(insertContact.run('people/carla', 'Carla').lastInsertRowid);
+  insertPhone.run(ana, '+55 16 99999-1111', '5516999991111', 1);
+  insertPhone.run(bia, '+55 16 99999-2222', '5516999992222', 1);
+  insertPhone.run(bruno, '123', null, 0);
+  insertPhone.run(carla, '+55 16 99999-1111', '5516999991111', 1);
+  const contacts = new ContactService(new ContactRepository(database));
+  const selection = new ContactSelectionService(new ContactSelectionRepository(database));
+  const campaigns = new CampaignService(
+    new CampaignRepository(database),
+    contacts,
+    new MediaService(new MediaRepository(database), '/tmp/wa-delivery-google-campaign-tests'),
+    selection,
+  );
+  return { database, campaigns, insertContact };
+}
+
+const allGoogleContacts = {
+  version: 1 as const,
+  filter: {
+    version: 1,
+    root: {
+      type: 'group',
+      combinator: 'and',
+      children: [{ type: 'rule', field: 'displayName', operator: 'isNotEmpty' }],
+    },
+  },
+  selectAllMatching: true,
+  includedIds: [],
+  excludedIds: [],
+  order: 'name' as const,
+};
+
 describe('CampaignService', () => {
+  it('simula e prepara seleção Google com lotes e manifesto de inelegíveis', () => {
+    const { database, campaigns } = setupGoogleCampaigns();
+    try {
+      const input = {
+        name: 'Agenda Google',
+        contactSelection: allGoogleContacts,
+        messageTemplate: 'Olá {{nome}}!',
+        delayMinSeconds: 5,
+        delayMaxSeconds: 10,
+        batchSize: 1,
+        batchIntervalSeconds: 3_600,
+        batchOrder: 'name' as const,
+      };
+      const simulation = campaigns.simulate(input);
+      assert.equal(simulation.selectionSource, 'google');
+      assert.equal(simulation.recipientCount, 2);
+      assert.equal(simulation.batchCount, 2);
+      assert.equal(simulation.durationMinSeconds, 3_600);
+
+      const draft = campaigns.createDraft(input);
+      assert.equal(draft.contactListId, undefined);
+      assert.equal(draft.selectionResolvedIds?.length, 4);
+      const prepared = campaigns.prepareDraft(draft.id, true);
+      assert.equal(prepared?.status, 'ready');
+      const recipients = campaigns.listRecipients(draft.id) ?? [];
+      assert.equal(recipients.length, 4);
+      assert.deepEqual(
+        recipients
+          .filter((recipient) => recipient.eligibilityStatus === 'eligible')
+          .map((recipient) => recipient.batchNumber),
+        [1, 2],
+      );
+      assert.equal(
+        recipients.find((recipient) => recipient.name === 'Bruno')?.eligibilityStatus,
+        'invalid_phone',
+      );
+      assert.equal(
+        recipients.find((recipient) => recipient.name === 'Bruno')?.deletionRecommendation,
+        'recommended',
+      );
+      assert.equal(
+        recipients.find((recipient) => recipient.name === 'Carla')?.eligibilityStatus,
+        'duplicate_phone',
+      );
+    } finally {
+      database.close();
+    }
+  });
+
+  it('exige nova revisão quando a agenda muda antes do preparo', () => {
+    const { database, campaigns, insertContact } = setupGoogleCampaigns();
+    try {
+      const draft = campaigns.createDraft({
+        name: 'Agenda mutável',
+        contactSelection: allGoogleContacts,
+        messageTemplate: 'Olá {{nome}}!',
+        delayMinSeconds: 1,
+        delayMaxSeconds: 1,
+      });
+      insertContact.run('people/nova', 'Nova pessoa');
+      assert.throws(
+        () => campaigns.prepareDraft(draft.id, true),
+        (error: unknown) =>
+          error instanceof CampaignValidationError &&
+          error.issues.some((issue) => /agenda mudou/i.test(issue.message)),
+      );
+      assert.equal(campaigns.findById(draft.id)?.status, 'draft');
+    } finally {
+      database.close();
+    }
+  });
   it('simula duração e personaliza amostras sem enviar', () => {
     const { list, campaigns } = setup();
     const simulation = campaigns.simulate({

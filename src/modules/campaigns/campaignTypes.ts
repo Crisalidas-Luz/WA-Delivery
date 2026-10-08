@@ -10,6 +10,7 @@ export interface CampaignComposerInput {
   batchSize?: number;
   batchIntervalSeconds?: number;
   batchOrder?: 'name' | 'google' | 'random';
+  batchOrderSeed?: string;
   mediaId?: number | null;
 }
 

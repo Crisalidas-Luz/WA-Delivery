@@ -52,9 +52,14 @@ const settings = new SettingsService(new SettingsRepository(database));
 const contacts = new ContactService(new ContactRepository(database), settings);
 const csvImports = new CsvImportService(contacts, settings);
 const media = new MediaService(new MediaRepository(database), resolve('data/media'));
-const campaigns = new CampaignService(new CampaignRepository(database), contacts, media);
 const google = createGoogleService();
 const contactSelection = new ContactSelectionService(new ContactSelectionRepository(database));
+const campaigns = new CampaignService(
+  new CampaignRepository(database),
+  contacts,
+  media,
+  contactSelection,
+);
 const queue = new CampaignQueueWorker(
   new CampaignQueueRepository(database),
   campaigns,

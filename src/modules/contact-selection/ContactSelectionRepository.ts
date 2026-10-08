@@ -14,6 +14,7 @@ export interface ContactSearchItem {
   resourceName: string;
   displayName: string;
   phone?: string;
+  phoneOriginal?: string;
   phoneLabel?: string;
   phoneValid: boolean;
   labels: string[];
@@ -63,6 +64,10 @@ export class ContactSelectionRepository {
            WHERE primary_phone.google_contact_id = gc.id
            ORDER BY primary_phone.is_primary DESC, primary_phone.is_valid DESC, primary_phone.id
            LIMIT 1) AS phone_label,
+          (SELECT raw_value FROM google_contact_phones primary_phone
+           WHERE primary_phone.google_contact_id = gc.id
+           ORDER BY primary_phone.is_primary DESC, primary_phone.is_valid DESC, primary_phone.id
+           LIMIT 1) AS phone_original,
           (SELECT is_valid FROM google_contact_phones primary_phone
            WHERE primary_phone.google_contact_id = gc.id
            ORDER BY primary_phone.is_primary DESC, primary_phone.is_valid DESC, primary_phone.id
@@ -90,6 +95,7 @@ export class ContactSelectionRepository {
       remote_deleted: number;
       phone: string | null;
       phone_label: string | null;
+      phone_original: string | null;
       phone_valid: number | null;
       labels: string | null;
       opted_out: number;
@@ -175,6 +181,10 @@ const contactSelectSql = `SELECT gc.id, gc.resource_name, gc.display_name, gc.re
    WHERE primary_phone.google_contact_id = gc.id
    ORDER BY primary_phone.is_primary DESC, primary_phone.is_valid DESC, primary_phone.id
    LIMIT 1) AS phone_label,
+  (SELECT raw_value FROM google_contact_phones primary_phone
+   WHERE primary_phone.google_contact_id = gc.id
+   ORDER BY primary_phone.is_primary DESC, primary_phone.is_valid DESC, primary_phone.id
+   LIMIT 1) AS phone_original,
   (SELECT is_valid FROM google_contact_phones primary_phone
    WHERE primary_phone.google_contact_id = gc.id
    ORDER BY primary_phone.is_primary DESC, primary_phone.is_valid DESC, primary_phone.id
@@ -200,6 +210,7 @@ interface ContactSearchRow {
   remote_deleted: number;
   phone: string | null;
   phone_label: string | null;
+  phone_original: string | null;
   phone_valid: number | null;
   labels: string | null;
   opted_out: number;
@@ -213,6 +224,7 @@ function toSearchItem(row: ContactSearchRow): ContactSearchItem {
     displayName: row.display_name,
     ...(row.phone ? { phone: row.phone } : {}),
     ...(row.phone_label ? { phoneLabel: row.phone_label } : {}),
+    ...(row.phone_original ? { phoneOriginal: row.phone_original } : {}),
     phoneValid: row.phone_valid === 1,
     labels: row.labels ? row.labels.split(String.fromCharCode(31)) : [],
     remoteDeleted: row.remote_deleted === 1,
