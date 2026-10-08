@@ -24,6 +24,7 @@ class FakeGooglePeopleProvider implements GooglePeopleProvider {
   public calls: ListGoogleContactsInput[] = [];
   public pages: GoogleContactsPage[] = [];
   public expireSyncToken = false;
+  public failAtCall?: number;
 
   public async createAuthorizationRequest(): Promise<GoogleOAuthStart> {
     throw new Error('não usado');
@@ -48,6 +49,7 @@ class FakeGooglePeopleProvider implements GooglePeopleProvider {
     input: ListGoogleContactsInput,
   ): Promise<GoogleContactsPage> {
     this.calls.push(input);
+    if (this.failAtCall === this.calls.length) throw new Error('Falha simulada entre páginas.');
     if (input.syncToken && this.expireSyncToken) {
       this.expireSyncToken = false;
       throw new GoogleSyncTokenExpiredError();
@@ -184,6 +186,43 @@ describe('GoogleContactsSyncService', () => {
       assert.equal(phone.normalized_phone, null);
       assert.equal(phone.is_valid, 0);
       assert.ok(phone.validation_reason);
+    } finally {
+      database.close();
+    }
+  });
+
+  it('só marca contatos ausentes após uma sincronização completa terminar com sucesso', async () => {
+    const { database, repository, provider, service } = setup();
+    try {
+      provider.pages = [
+        {
+          contacts: [
+            contact('people/keep', '+5516999991111'),
+            contact('people/remove', '+5516999992222'),
+          ],
+          nextSyncToken: 'initial-token',
+        },
+      ];
+      await service.sync(TOKENS);
+      repository.clearSyncToken();
+      provider.calls = [];
+      provider.failAtCall = 2;
+      provider.pages = [
+        { contacts: [contact('people/keep', '+5516999991111')], nextPageToken: 'page-2' },
+      ];
+      await assert.rejects(service.sync(TOKENS), /Falha simulada/);
+      assert.equal(repository.isRemoteDeleted('people/remove'), false);
+      assert.equal(repository.syncState()?.status, 'failed');
+
+      provider.failAtCall = undefined;
+      provider.calls = [];
+      provider.pages = [
+        { contacts: [contact('people/keep', '+5516999991111')], nextSyncToken: 'recovered-token' },
+      ];
+      assert.deepEqual(await service.sync(TOKENS), { created: 0, updated: 1, deleted: 1 });
+      assert.equal(repository.isRemoteDeleted('people/remove'), true);
+      assert.equal(repository.syncState()?.syncToken, 'recovered-token');
+      assert.equal(repository.syncState()?.deletedCount, 1);
     } finally {
       database.close();
     }

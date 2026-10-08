@@ -182,15 +182,41 @@ export class GoogleContactsRepository {
     type: 'full' | 'incremental',
     syncToken: string | undefined,
     counts: { created: number; updated: number; deleted: number },
-  ): void {
+    seenResourceNames: ReadonlySet<string> = new Set(),
+  ): number {
     const timestampColumn = type === 'full' ? 'last_full_sync_at' : 'last_incremental_sync_at';
-    this.database
-      .prepare(
-        `UPDATE google_sync_state SET status = 'completed', sync_token = ?,
-          ${timestampColumn} = CURRENT_TIMESTAMP, created_count = ?, updated_count = ?,
-          deleted_count = ?, updated_at = CURRENT_TIMESTAMP WHERE account_id = 1`,
-      )
-      .run(syncToken ?? null, counts.created, counts.updated, counts.deleted);
+    this.database.exec('BEGIN IMMEDIATE');
+    try {
+      let missingDeleted = 0;
+      if (type === 'full') {
+        const active = this.database
+          .prepare(
+            `SELECT id, resource_name FROM google_contacts
+             WHERE account_id = 1 AND remote_deleted = 0`,
+          )
+          .all() as unknown as Array<{ id: number; resource_name: string }>;
+        const markDeleted = this.database.prepare(
+          `UPDATE google_contacts SET remote_deleted = 1, synced_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP WHERE id = ? AND remote_deleted = 0`,
+        );
+        for (const contact of active) {
+          if (seenResourceNames.has(contact.resource_name)) continue;
+          missingDeleted += Number(markDeleted.run(contact.id).changes);
+        }
+      }
+      this.database
+        .prepare(
+          `UPDATE google_sync_state SET status = 'completed', sync_token = ?,
+            ${timestampColumn} = CURRENT_TIMESTAMP, created_count = ?, updated_count = ?,
+            deleted_count = ?, updated_at = CURRENT_TIMESTAMP WHERE account_id = 1`,
+        )
+        .run(syncToken ?? null, counts.created, counts.updated, counts.deleted + missingDeleted);
+      this.database.exec('COMMIT');
+      return missingDeleted;
+    } catch (error) {
+      this.database.exec('ROLLBACK');
+      throw error;
+    }
   }
 
   public failSync(code: string, message: string): void {

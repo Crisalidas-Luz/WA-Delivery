@@ -58,6 +58,7 @@ export class GoogleContactsSyncService {
     let pageToken: string | undefined;
     let nextSyncToken: string | undefined;
     const totals = { created: 0, updated: 0, deleted: 0 };
+    const seenResourceNames = new Set<string>();
     do {
       const page = await this.provider.listContacts(tokens, {
         ...(pageToken ? { pageToken } : {}),
@@ -68,13 +69,19 @@ export class GoogleContactsSyncService {
       const counts = this.repository.applyPage(
         page.contacts.map((contact) => ({ contact, phones: this.normalizePhones(contact.phones) })),
       );
+      for (const contact of page.contacts) seenResourceNames.add(contact.resourceName);
       totals.created += counts.created;
       totals.updated += counts.updated;
       totals.deleted += counts.deleted;
       pageToken = page.nextPageToken;
       nextSyncToken = page.nextSyncToken ?? nextSyncToken;
     } while (pageToken);
-    this.repository.finishSync(type, nextSyncToken ?? syncToken, totals);
+    totals.deleted += this.repository.finishSync(
+      type,
+      nextSyncToken ?? syncToken,
+      totals,
+      seenResourceNames,
+    );
     return totals;
   }
 

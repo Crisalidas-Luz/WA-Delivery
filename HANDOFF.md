@@ -374,12 +374,25 @@ Filtros para campos amplos da People API:
   personalizados combinam seus pares de tipo/chave e valor;
 - testes consultam dados reais dessas quatro coleções, além do e-mail já existente.
 
+Reconciliação segura da sincronização completa:
+
+- uma sincronização completa bem-sucedida mantém o conjunto de `resourceName` vistos e marca como
+  removidos remotamente os contatos locais ativos que não apareceram mais na agenda;
+- a reconciliação e a conclusão do estado de sync ocorrem na mesma transação local, sem apagar os
+  registros nem os snapshots históricos;
+- sincronizações incrementais continuam dependendo apenas dos tombstones do Google e não executam
+  varredura de ausentes;
+- se uma sincronização completa falhar entre páginas, nenhum contato ausente é marcado como
+  removido; a repetição completa pode recuperar e só então gravar o novo sync token;
+- o contador `deleted` inclui os ausentes reconciliados. Teste cobre falha intermediária, estado
+  `failed`, recuperação e marcação somente após sucesso.
+
 ## Validações da última etapa
 
 - `npm.cmd run typecheck`: passou.
 - `npm.cmd run lint`: passou.
 - `npm.cmd run format`: passou e normalizou os arquivos alterados.
-- `npm.cmd test`: 185 testes passaram, 0 falharam.
+- `npm.cmd test`: 186 testes passaram, 0 falharam.
 - `npm.cmd run build`: passou.
 - `node --check public/settings.js` e `node --check public/campaign.js`: passaram.
 - Observação do ambiente: dentro do sandbox, o loader `tsx` falhou em `uv_os_get_passwd` com
@@ -391,7 +404,7 @@ Filtros para campos amplos da People API:
 
 1. Revisar acessibilidade/progresso de operações longas e a cobertura do fluxo visual.
 2. Auditar requisitos do `AGENTS.md` ainda sem evidência direta e ampliar testes de rotas/UI.
-3. Conferir sincronização completa/incremental quanto a atomicidade entre páginas e recuperação.
+3. Ampliar testes de OAuth (callback negado/expirado, token inválido e não vazamento).
 4. Executar QA real de OAuth, sincronização, envio e exclusão com contas de teste antes do merge.
 
 ## Decisões e cuidados ativos
