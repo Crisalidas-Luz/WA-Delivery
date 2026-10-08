@@ -51,7 +51,6 @@ tabManual.addEventListener('click', () => selectTab('manual'));
 const googleStatus = document.querySelector('#google-contact-status');
 const googleError = document.querySelector('#google-contact-error');
 const filterRules = document.querySelector('#filter-rules');
-const filterCombinator = document.querySelector('#filter-combinator');
 const savedFilter = document.querySelector('#saved-filter');
 const filterName = document.querySelector('#filter-name');
 const googleResults = document.querySelector('#google-contact-results');
@@ -112,9 +111,10 @@ function objectOptions(values, selected) {
     .join('');
 }
 
-function addFilterRule(rule = { field: 'displayName', operator: 'isNotEmpty' }) {
+function createFilterRule(rule = { field: 'displayName', operator: 'isNotEmpty' }) {
   const row = document.createElement('div');
   row.className = 'filter-rule';
+  row.dataset.filterNode = 'rule';
   row.innerHTML = `
     <label>Campo<select class="filter-field">${objectOptions(contactFields, rule.field)}</select></label>
     <label>Operador<select class="filter-operator">${objectOptions(contactOperators, rule.operator)}</select></label>
@@ -130,40 +130,122 @@ function addFilterRule(rule = { field: 'displayName', operator: 'isNotEmpty' }) 
   };
   row.querySelector('.filter-operator').addEventListener('change', updateValueState);
   row.querySelector('.remove-filter-rule').addEventListener('click', () => {
-    if (filterRules.children.length > 1) row.remove();
+    const container = row.parentElement;
+    if (container.children.length > 1) row.remove();
   });
   updateValueState();
-  filterRules.append(row);
+  return row;
+}
+
+function createFilterGroup(
+  group = { type: 'group', combinator: 'and', children: [] },
+  isRoot = false,
+) {
+  const panel = document.createElement('section');
+  panel.className = `filter-group${isRoot ? ' filter-group-root' : ''}`;
+  panel.dataset.filterNode = 'group';
+  const header = document.createElement('div');
+  header.className = 'filter-group-header';
+  const combinatorLabel = document.createElement('label');
+  combinatorLabel.textContent = isRoot
+    ? 'Combinar tudo neste filtro'
+    : 'Combinar itens deste grupo';
+  const combinator = document.createElement('select');
+  combinator.className = 'filter-group-combinator';
+  combinator.innerHTML =
+    '<option value="and">Todas (E)</option><option value="or">Qualquer uma (OU)</option>';
+  combinator.value = group.combinator;
+  combinatorLabel.append(combinator);
+  const actions = document.createElement('div');
+  actions.className = 'filter-group-actions';
+  const addRule = document.createElement('button');
+  addRule.type = 'button';
+  addRule.className = 'secondary';
+  addRule.textContent = 'Adicionar regra';
+  const addGroup = document.createElement('button');
+  addGroup.type = 'button';
+  addGroup.className = 'secondary';
+  addGroup.textContent = 'Adicionar grupo E/OU';
+  actions.append(addRule, addGroup);
+  if (!isRoot) {
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'danger';
+    remove.textContent = 'Remover grupo';
+    remove.addEventListener('click', () => {
+      const container = panel.parentElement;
+      if (container.children.length > 1) panel.remove();
+    });
+    actions.append(remove);
+  }
+  header.append(combinatorLabel, actions);
+  const children = document.createElement('div');
+  children.className = 'filter-group-children';
+  addRule.addEventListener('click', () =>
+    children.append(createFilterRule({ field: 'displayName', operator: 'contains' })),
+  );
+  addGroup.addEventListener('click', () =>
+    children.append(
+      createFilterGroup({
+        type: 'group',
+        combinator: 'and',
+        children: [{ type: 'rule', field: 'displayName', operator: 'contains' }],
+      }),
+    ),
+  );
+  for (const child of group.children ?? []) {
+    children.append(child.type === 'group' ? createFilterGroup(child) : createFilterRule(child));
+  }
+  if (children.children.length === 0) children.append(createFilterRule());
+  panel.append(header, children);
+  return panel;
+}
+
+function readFilterNode(element) {
+  if (element.dataset.filterNode === 'group') {
+    const childrenContainer = [...element.children].find((child) =>
+      child.classList.contains('filter-group-children'),
+    );
+    return {
+      type: 'group',
+      combinator: element.querySelector(':scope > .filter-group-header .filter-group-combinator')
+        .value,
+      children: [...childrenContainer.children].map(readFilterNode),
+    };
+  }
+  const row = element;
+  const operator = row.querySelector('.filter-operator').value;
+  const rawValue = row.querySelector('.filter-value').value.trim();
+  const rule = { type: 'rule', field: row.querySelector('.filter-field').value, operator };
+  if (!['isEmpty', 'isNotEmpty'].includes(operator)) {
+    rule.value = ['in', 'notIn', 'between'].includes(operator)
+      ? rawValue
+          .split(',')
+          .map((value) => value.trim())
+          .filter(Boolean)
+      : rawValue;
+  }
+  return rule;
 }
 
 function readFilter() {
-  const children = [...filterRules.querySelectorAll('.filter-rule')].map((row) => {
-    const operator = row.querySelector('.filter-operator').value;
-    const rawValue = row.querySelector('.filter-value').value.trim();
-    const rule = { type: 'rule', field: row.querySelector('.filter-field').value, operator };
-    if (!['isEmpty', 'isNotEmpty'].includes(operator)) {
-      rule.value = ['in', 'notIn', 'between'].includes(operator)
-        ? rawValue
-            .split(',')
-            .map((value) => value.trim())
-            .filter(Boolean)
-        : rawValue;
-    }
-    return rule;
-  });
-  return { version: 1, root: { type: 'group', combinator: filterCombinator.value, children } };
+  return { version: 1, root: readFilterNode(filterRules.firstElementChild) };
 }
 
 function renderFilter(definition) {
-  filterCombinator.value = definition.root.combinator;
-  filterRules.replaceChildren();
-  for (const child of definition.root.children) if (child.type === 'rule') addFilterRule(child);
-  if (filterRules.children.length === 0) addFilterRule();
+  filterRules.replaceChildren(createFilterGroup(definition.root, true));
 }
 
 async function initializeGoogleContacts() {
   googleLoaded = true;
-  addFilterRule();
+  renderFilter({
+    version: 1,
+    root: {
+      type: 'group',
+      combinator: 'and',
+      children: [{ type: 'rule', field: 'displayName', operator: 'isNotEmpty' }],
+    },
+  });
   try {
     const [statusResponse] = await Promise.all([fetch('/api/google/status'), loadSavedFilters()]);
     const status = await statusResponse.json();
@@ -280,9 +362,6 @@ function showGoogleError(message = '') {
   googleError.textContent = message;
 }
 
-document
-  .querySelector('#add-filter-rule')
-  .addEventListener('click', () => addFilterRule({ field: 'displayName', operator: 'contains' }));
 document.querySelector('#apply-contact-filter').addEventListener('click', async () => {
   contactPage = 1;
   try {

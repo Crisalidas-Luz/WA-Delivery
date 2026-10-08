@@ -216,6 +216,16 @@ Jobs auditáveis de exclusão Google:
 - testes cobrem exclusão verificada, mudança de evidência, ausência de confirmação/recomendação e
   interrupção por autorização.
 
+Editor visual de filtros aninhados:
+
+- a interface agora representa o AST completo com grupos recursivos, em vez de reduzir filtros
+  salvos ao primeiro nível;
+- cada grupo escolhe `E`/`OU` independentemente e pode receber regras ou novos subgrupos;
+- filtros aninhados carregados do banco são reidratados integralmente e continuam editáveis;
+- o AST enviado para busca, resolução de seleção e filtros salvos mantém a mesma versão e contrato
+  já validados pelo backend;
+- remoção preserva ao menos um nó por grupo, evitando criar grupos vazios pela interface.
+
 ## Validações da última etapa
 
 - `npm.cmd run typecheck`: passou.
@@ -231,11 +241,12 @@ Jobs auditáveis de exclusão Google:
 
 ## Próximo passo
 
-1. Evoluir o editor visual para grupos `E`/`OU` aninhados sem perder ASTs já salvas.
-2. Adaptar o follow-up para criar um rascunho editável no mesmo wizard, em vez de uma campanha já
+1. Adaptar o follow-up para criar um rascunho editável no mesmo wizard, em vez de uma campanha já
    preparada.
-3. Paginar o manifesto completo na interface e tornar jobs longos de exclusão retomáveis após
+2. Paginar o manifesto completo na interface e tornar jobs longos de exclusão retomáveis após
    reload/reinício, com progresso assíncrono.
+3. Implementar escolha manual do telefone nos contatos Google ambíguos e ampliar variáveis de
+   personalização para os campos sincronizados.
 
 ## Decisões e cuidados ativos
 

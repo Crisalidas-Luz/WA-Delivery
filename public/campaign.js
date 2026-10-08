@@ -225,8 +225,7 @@ function updateDeletionControls() {
   contactDeletionSummary.textContent = selected.length
     ? `${selected.length} contato(s) selecionado(s): ${detail}. A evidência será validada novamente antes de cada exclusão.`
     : 'Nenhum contato selecionado para exclusão.';
-  deleteGoogleContacts.disabled =
-    selected.length === 0 || !contactDeletionConfirmation.checked;
+  deleteGoogleContacts.disabled = selected.length === 0 || !contactDeletionConfirmation.checked;
 }
 
 function renderDeletionJob(job) {
