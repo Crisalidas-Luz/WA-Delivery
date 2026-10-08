@@ -354,12 +354,22 @@ Diagnóstico de exclusão de campanha:
 - campanhas com auditoria concluída continuam sendo removidas junto com seus registros terminais;
 - o teste de retenção/auditoria verifica explicitamente o motivo estruturado do bloqueio.
 
+Backup das novas estruturas sem tokens:
+
+- teste integrado cria um banco no schema atual com conta/contato Google, campanha com lote e job de
+  exclusão concluído, gera o `.wabkp`, altera o banco e restaura o arquivo;
+- após a restauração, o SQLite real confirma os contatos Google, `batch_size` e a auditoria de
+  exclusão;
+- um refresh token de prova armazenado fora de `data/` não aparece no manifesto nem nos bytes do
+  backup e permanece intacto depois da restauração;
+- a restauração continua recusando schema mais novo, preservando a proteção de rollback já testada.
+
 ## Validações da última etapa
 
 - `npm.cmd run typecheck`: passou.
 - `npm.cmd run lint`: passou.
 - `npm.cmd run format`: passou e normalizou os arquivos alterados.
-- `npm.cmd test`: 184 testes passaram, 0 falharam.
+- `npm.cmd test`: 185 testes passaram, 0 falharam.
 - `npm.cmd run build`: passou.
 - `node --check public/settings.js` e `node --check public/campaign.js`: passaram.
 - Observação do ambiente: dentro do sandbox, o loader `tsx` falhou em `uv_os_get_passwd` com
@@ -371,7 +381,7 @@ Diagnóstico de exclusão de campanha:
 
 1. Revisar acessibilidade/progresso de operações longas e a cobertura do fluxo visual.
 2. Auditar requisitos do `AGENTS.md` ainda sem evidência direta e ampliar testes de rotas/UI.
-3. Revisar backup/restauração e compatibilidade das novas tabelas com evidência específica.
+3. Conferir sincronização completa/incremental quanto a atomicidade entre páginas e recuperação.
 4. Executar QA real de OAuth, sincronização, envio e exclusão com contas de teste antes do merge.
 
 ## Decisões e cuidados ativos

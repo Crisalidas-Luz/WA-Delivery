@@ -12,6 +12,7 @@ import {
   BACKUP_MAGIC,
 } from '../src/modules/backup/backupArchive.ts';
 import { BackupService } from '../src/modules/backup/BackupService.ts';
+import { LATEST_SCHEMA_VERSION, openDatabase } from '../src/database/database.ts';
 
 describe('backupArchive', () => {
   it('empacota e desempacota preservando conteúdo e checksums', () => {
@@ -74,6 +75,83 @@ async function makeDataDir(): Promise<string> {
 }
 
 describe('BackupService', () => {
+  it('preserva dados Google/campanha/auditoria e nunca inclui o cofre de tokens', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'wa-backup-google-'));
+    const dataDir = join(root, 'data');
+    const databasePath = join(dataDir, 'database', 'wa-delivery.db');
+    const tokenPath = join(root, 'secure-store', 'google-tokens.bin');
+    try {
+      await mkdir(join(dataDir, 'database'), { recursive: true });
+      await mkdir(join(root, 'secure-store'), { recursive: true });
+      await writeFile(tokenPath, 'REFRESH_TOKEN_NAO_DEVE_ENTRAR_NO_BACKUP');
+      const database = openDatabase(databasePath);
+      database
+        .prepare(
+          `INSERT INTO google_accounts
+            (id, google_subject, email, display_name, token_store_key)
+           VALUES (1, 'subject', 'user@example.com', 'User', 'google:subject')`,
+        )
+        .run();
+      database.prepare('INSERT INTO google_sync_state (account_id) VALUES (1)').run();
+      database
+        .prepare(
+          `INSERT INTO google_contacts
+            (account_id, resource_name, display_name, raw_json)
+           VALUES (1, 'people/backup', 'Contato backup', '{}')`,
+        )
+        .run();
+      const campaignId = Number(
+        database
+          .prepare(
+            `INSERT INTO campaigns
+              (name, message_template, delay_min_seconds, delay_max_seconds, status,
+               selection_source, batch_size, batch_interval_seconds)
+             VALUES ('Campanha backup', 'Olá', 1, 1, 'completed', 'google', 50, 3600)`,
+          )
+          .run().lastInsertRowid,
+      );
+      database
+        .prepare(
+          `INSERT INTO contact_deletion_jobs
+            (campaign_id, status, requested_count, confirmed_at, finished_at)
+           VALUES (?, 'completed', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+        )
+        .run(campaignId);
+      database.close();
+
+      const service = new BackupService(dataDir, '2.0.0', LATEST_SCHEMA_VERSION);
+      const { buffer } = await service.createBackup();
+      const archive = unpackBackup(buffer);
+      assert.equal(
+        archive.manifest.files.some((file) => /token|credential/i.test(file.relPath)),
+        false,
+      );
+      assert.equal(buffer.includes(Buffer.from('REFRESH_TOKEN_NAO_DEVE_ENTRAR_NO_BACKUP')), false);
+
+      const changed = openDatabase(databasePath);
+      changed.prepare('DELETE FROM contact_deletion_jobs').run();
+      changed.prepare('DELETE FROM campaigns').run();
+      changed.prepare('DELETE FROM google_contacts').run();
+      changed.close();
+      await service.restoreBackup(buffer);
+
+      const restored = openDatabase(databasePath);
+      assert.equal(
+        restored.prepare('SELECT COUNT(*) AS total FROM google_contacts').get()?.total,
+        1,
+      );
+      assert.equal(restored.prepare('SELECT batch_size FROM campaigns').get()?.batch_size, 50);
+      assert.equal(
+        restored.prepare('SELECT COUNT(*) AS total FROM contact_deletion_jobs').get()?.total,
+        1,
+      );
+      restored.close();
+      assert.equal(await readFile(tokenPath, 'utf8'), 'REFRESH_TOKEN_NAO_DEVE_ENTRAR_NO_BACKUP');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('cria um backup com o conteúdo esperado', async () => {
     const root = await makeDataDir();
     try {
