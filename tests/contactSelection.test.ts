@@ -215,6 +215,56 @@ describe('ContactSelectionRepository', () => {
 });
 
 describe('filtros salvos e API de seleção', () => {
+  it('pagina e resolve uma agenda grande sem perder resultados além da primeira página', () => {
+    const { database, repository } = setup();
+    try {
+      const insert = database.prepare(
+        `INSERT INTO google_contacts
+          (account_id, resource_name, display_name, given_name, raw_json)
+         VALUES (1, ?, ?, ?, '{}')`,
+      );
+      const insertPhone = database.prepare(
+        `INSERT INTO google_contact_phones
+          (google_contact_id, label, raw_value, normalized_phone, is_primary, is_valid)
+         VALUES (?, 'Celular', ?, ?, 1, 1)`,
+      );
+      database.exec('BEGIN');
+      try {
+        for (let index = 0; index < 2_500; index += 1) {
+          const phone = `5516${String(9_000_000_000 + index)}`;
+          const id = Number(
+            insert.run(`people/volume-${index}`, `Contato Volume ${index}`, 'Contato')
+              .lastInsertRowid,
+          );
+          insertPhone.run(id, phone, phone);
+        }
+        database.exec('COMMIT');
+      } catch (error) {
+        database.exec('ROLLBACK');
+        throw error;
+      }
+
+      const startedAt = performance.now();
+      const page = repository.search({
+        filter: filter('displayName', 'startsWith', 'contato volume'),
+        page: 20,
+        pageSize: 100,
+      });
+      const resolved = new ContactSelectionService(repository).resolveSelection({
+        filter: filter('displayName', 'startsWith', 'contato volume'),
+        selectAllMatching: true,
+      });
+
+      assert.equal(page.total, 2_500);
+      assert.equal(page.items.length, 100);
+      assert.equal(resolved.contactIds.length, 2_500);
+      assert.equal(resolved.summary.eligible, 2_500);
+      assert.ok(performance.now() - startedAt < 10_000, 'consulta volumosa excedeu 10 segundos');
+    } finally {
+      database.close();
+    }
+  });
+
   it('resolve todos os resultados com inclusões e exclusões manuais de forma reproduzível', () => {
     const { database, repository } = setup();
     try {

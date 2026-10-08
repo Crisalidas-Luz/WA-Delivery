@@ -5,6 +5,34 @@ O formato segue, de forma simplificada, o
 [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/), e o versionamento
 segue [SemVer](https://semver.org/lang/pt-BR/).
 
+## [Não lançado]
+
+### Adicionado
+
+- OAuth local e sincronização completa/incremental do Google Contacts com People API, cofre seguro
+  de tokens e progresso assíncrono retomável na interface.
+- Filtros inteligentes aninhados, salvos e parametrizados, com busca sem distinção de caixa ou
+  acentos, paginação, seleção global e escolha de telefones ambíguos.
+- Campanhas Google com snapshots imutáveis, lotes configuráveis, espera persistente entre lotes e
+  retomada sempre explícita depois de pausa ou reinício.
+- Manifesto estruturado por destinatário, motivos legíveis por máquina, tentativas, exportação CSV e
+  linguagem de “envio aceito” sem alegar confirmação de entrega.
+- Jobs auditáveis e sequenciais para exclusão revisada do Google Contacts, com revalidação,
+  tratamento de falhas, retomada e confirmação posterior por sincronização.
+
+### Segurança
+
+- Limite explícito de 1 MiB para payloads JSON e de 10.000 itens por job de exclusão.
+- Tokens Google permanecem fora do backup; dependências transitivas vulneráveis foram atualizadas
+  por overrides compatíveis.
+- Regiões de progresso, alertas e operações longas receberam semântica para tecnologias assistivas.
+
+### Compatibilidade
+
+- Schema evoluído até a v12; campanhas antigas são interpretadas como lote único e listas
+  CSV/manuais continuam no mesmo fluxo.
+- Follow-up manual volta ao compositor como rascunho revisável e nunca inicia automaticamente.
+
 ## [2.0.0] - 2026-09-20
 
 Primeira versão estável da V2, validada no Windows 11: aplicação local com

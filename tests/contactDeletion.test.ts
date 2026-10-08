@@ -81,6 +81,7 @@ function setup(input: {
   phones: string[];
   recommendation?: 'recommended' | 'review' | 'not_recommended';
   deleteError?: Error;
+  deleteErrors?: Error[];
   deleteAsMissing?: boolean;
 }) {
   const database = openDatabase(':memory:');
@@ -149,9 +150,13 @@ function setup(input: {
     new MediaService(new MediaRepository(database), '/tmp/wa-delivery-deletion-tests'),
   );
   let deleted = false;
+  let deleteCalls = 0;
   const google = {
     getContact: async () => (deleted ? undefined : current),
     deleteContact: async () => {
+      deleteCalls += 1;
+      const queuedError = input.deleteErrors?.shift();
+      if (queuedError) throw queuedError;
       if (input.deleteError) throw input.deleteError;
       if (input.deleteAsMissing) throw new GoogleContactNotFoundError();
       deleted = true;
@@ -163,6 +168,7 @@ function setup(input: {
     },
   } as unknown as GoogleAuthService;
   const whatsapp = new FakeWhatsApp();
+  const waits: number[] = [];
   const service = new ContactDeletionService(
     new ContactDeletionRepository(database),
     campaigns,
@@ -170,9 +176,19 @@ function setup(input: {
     googleContacts,
     whatsapp,
     new SettingsService(new SettingsRepository(database)),
-    async () => undefined,
+    async (milliseconds) => {
+      waits.push(milliseconds);
+    },
   );
-  return { database, service, whatsapp, campaignId, recipientId };
+  return {
+    database,
+    service,
+    whatsapp,
+    campaignId,
+    recipientId,
+    waits,
+    deleteCalls: () => deleteCalls,
+  };
 }
 
 describe('ContactDeletionService', () => {
@@ -247,6 +263,62 @@ describe('ContactDeletionService', () => {
     assert.equal(job.status, 'failed');
     assert.equal(job.items[0]?.lastErrorCode, 'google_authorization');
     assert.doesNotMatch(job.items[0]?.lastErrorMessage ?? '', /403/);
+  });
+
+  it('aplica backoff limitado para 429 e conclui quando o Google se recupera', async () => {
+    const { service, campaignId, recipientId, waits, deleteCalls } = setup({
+      reason: 'invalid_phone',
+      phones: ['123'],
+      deleteErrors: [
+        new Error('Falha temporária ao excluir contato Google (HTTP 429).'),
+        new Error('Falha temporária ao excluir contato Google (HTTP 429).'),
+      ],
+    });
+    const job = await service.createAndExecute(campaignId, {
+      confirmed: true,
+      recipientIds: [recipientId],
+    });
+
+    assert.equal(deleteCalls(), 3);
+    assert.deepEqual(waits, [250, 500]);
+    assert.equal(job.status, 'completed');
+    assert.equal(job.items[0]?.status, 'deleted');
+  });
+
+  it('esgota três tentativas em 5xx e preserva uma falha segura para retry', async () => {
+    const { service, campaignId, recipientId, waits, deleteCalls } = setup({
+      reason: 'invalid_phone',
+      phones: ['123'],
+      deleteError: new Error('Falha temporária ao excluir contato Google (HTTP 503).'),
+    });
+    const job = await service.createAndExecute(campaignId, {
+      confirmed: true,
+      recipientIds: [recipientId],
+    });
+
+    assert.equal(deleteCalls(), 3);
+    assert.deepEqual(waits, [250, 500]);
+    assert.equal(job.status, 'failed');
+    assert.equal(job.items[0]?.lastErrorCode, 'google_unavailable');
+    assert.doesNotMatch(job.items[0]?.lastErrorMessage ?? '', /503/);
+  });
+
+  it('registra falha de rede sem confundi-la com autorização ou contato ausente', async () => {
+    const { service, campaignId, recipientId, waits, deleteCalls } = setup({
+      reason: 'invalid_phone',
+      phones: ['123'],
+      deleteError: new Error('socket hang up'),
+    });
+    const job = await service.createAndExecute(campaignId, {
+      confirmed: true,
+      recipientIds: [recipientId],
+    });
+
+    assert.equal(deleteCalls(), 1);
+    assert.deepEqual(waits, []);
+    assert.equal(job.status, 'failed');
+    assert.equal(job.items[0]?.lastErrorCode, 'google_deletion_failed');
+    assert.equal(job.items[0]?.status, 'failed');
   });
 
   it('registra contato removido entre a validação e a exclusão como já ausente', async () => {

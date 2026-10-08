@@ -85,6 +85,11 @@ npm run build
 
 Inicie novamente com `RUN.bat` ou `./run.sh`.
 
+As migrations são aplicadas automaticamente ao iniciar. Depois que um banco for aberto por uma
+versão com schema mais novo, não execute uma versão antiga sobre o mesmo diretório `data/`. Para
+rollback, encerre a aplicação, preserve o diretório atual e restaure um `.wabkp` criado pela versão
+anterior. A restauração recusa backups cujo schema seja mais novo que o código em execução.
+
 ## Desenvolvimento
 
 ```bash
@@ -102,6 +107,7 @@ npm audit --omit=dev
 
 ## Backup
 
-Na página **Configurações**, é possível baixar e restaurar um backup `.wabkp` contendo o banco, as mídias e a sessão local.
+Na página **Configurações**, é possível baixar e restaurar um backup `.wabkp` contendo o banco, as
+mídias e a sessão local.
 
 Guarde esse arquivo em local seguro, pois ele contém os dados da sessão do WhatsApp.

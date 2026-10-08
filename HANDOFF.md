@@ -445,12 +445,24 @@ Busca sem acentos e matriz completa de operadores:
 - testes em banco real cobrem contém, não contém, igual, diferente, começa, termina, vazio, não
   vazio, antes, depois, entre, em lista e fora da lista.
 
+Compatibilidade, volume e matriz de exclusão:
+
+- `AGENTS.md` reflete o schema atual v12; README documenta migrations automáticas e rollback seguro
+  por backup compatível, sem abrir banco novo com código antigo;
+- CHANGELOG registra o fluxo Google, lotes, manifesto, exclusão auditável, compatibilidade e
+  endurecimentos da versão ainda não lançada;
+- teste com 2.500 contatos confirma paginação de 100 itens e seleção global reproduzível sem perder
+  resultados além da primeira página; a execução levou menos de meio segundo neste ambiente, sem
+  evidência para introduzir FTS nesta fase;
+- exclusão Google agora tem cobertura explícita para recuperação após dois `429`, esgotamento de
+  três tentativas em `5xx` e falha de rede, preservando códigos e mensagens seguras para retry.
+
 ## Validações da última etapa
 
 - `npm.cmd run typecheck`: passou.
 - `npm.cmd run lint`: passou.
 - `npm.cmd run format`: passou e normalizou os arquivos alterados.
-- `npm.cmd test`: 195 testes passaram, 0 falharam.
+- `npm.cmd test`: 199 testes passaram, 0 falharam.
 - `npm.cmd run build`: passou.
 - `node --check public/settings.js` e `node --check public/campaign.js`: passaram.
 - `node --check public/monitor.js`: passou.
