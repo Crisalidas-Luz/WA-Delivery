@@ -98,6 +98,34 @@ export class ContactDeletionRepository {
     return toJob(row, items);
   }
 
+  public findLatestForCampaign(campaignId: number): ContactDeletionJob | undefined {
+    const row = this.database
+      .prepare(
+        'SELECT id FROM contact_deletion_jobs WHERE campaign_id = ? ORDER BY id DESC LIMIT 1',
+      )
+      .get(campaignId) as { id: number } | undefined;
+    return row ? this.find(row.id) : undefined;
+  }
+
+  public recoverInterrupted(): number {
+    const jobs = this.database
+      .prepare("SELECT id FROM contact_deletion_jobs WHERE status = 'running'")
+      .all() as unknown as Array<{ id: number }>;
+    for (const { id } of jobs) {
+      this.database
+        .prepare(
+          `UPDATE contact_deletion_items SET status = 'failed',
+            last_error_code = 'interrupted_unknown_outcome',
+            last_error_message = 'A aplicação foi encerrada durante esta exclusão. Retome para verificar o contato antes de tentar novamente.',
+            updated_at = CURRENT_TIMESTAMP
+           WHERE job_id = ? AND status = 'deleting'`,
+        )
+        .run(id);
+      this.complete(id);
+    }
+    return jobs.length;
+  }
+
   public start(id: number): void {
     this.database
       .prepare(
@@ -188,6 +216,23 @@ export class ContactDeletionRepository {
           updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
       )
       .run(status, id);
+  }
+
+  public failJob(id: number): void {
+    this.database
+      .prepare(
+        `UPDATE contact_deletion_items SET status = 'failed',
+          last_error_code = 'job_interrupted',
+          last_error_message = 'O job foi interrompido. Retome para verificar e continuar.',
+          updated_at = CURRENT_TIMESTAMP WHERE job_id = ? AND status = 'deleting'`,
+      )
+      .run(id);
+    this.database
+      .prepare(
+        `UPDATE contact_deletion_jobs SET status = 'failed', finished_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      )
+      .run(id);
   }
 }
 

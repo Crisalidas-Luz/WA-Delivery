@@ -85,6 +85,7 @@ const contactDeletion = googleIntegration
       settings,
     )
   : undefined;
+contactDeletion?.recoverInterrupted();
 queue.recoverInterrupted();
 await media.cleanupExpiredTemporary();
 

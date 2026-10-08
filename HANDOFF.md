@@ -241,12 +241,25 @@ Follow-up novamente revisável:
   ainda a referencia;
 - testes cobrem o novo rascunho local e a seleção explícita Google seguida de novo preparo.
 
+Exclusão assíncrona retomável e manifesto paginado:
+
+- criação e nova tentativa de exclusão retornam `202` e executam o job em segundo plano;
+- a tela consulta o job persistido a cada segundo, mostra progresso item a item e reencontra o job
+  mais recente da campanha depois de reload;
+- jobs pendentes ou com falha podem ser retomados explicitamente, sem repetir itens já concluídos;
+- na inicialização, operações que estavam `deleting` são marcadas com resultado desconhecido e
+  exigem retomada; a nova leitura do contato mantém a repetição idempotente na prática;
+- falha inesperada do executor deixa o job persistido como falho, sem rejeição assíncrona solta;
+- a lista do manifesto possui páginas navegáveis de 50 itens e mantém seleções individuais entre
+  páginas e filtros;
+- testes cobrem execução em segundo plano, consulta do último job e recuperação após interrupção.
+
 ## Validações da última etapa
 
 - `npm.cmd run typecheck`: passou.
 - `npm.cmd run lint`: passou.
 - `npm.cmd run format`: passou e normalizou os arquivos alterados.
-- `npm.cmd test`: 172 testes passaram, 0 falharam.
+- `npm.cmd test`: 174 testes passaram, 0 falharam.
 - `npm.cmd run build`: passou.
 - `node --check public/contacts.js`: passou.
 - Observação do ambiente: dentro do sandbox, o loader `tsx` falhou em `uv_os_get_passwd` com
@@ -256,12 +269,12 @@ Follow-up novamente revisável:
 
 ## Próximo passo
 
-1. Paginar o manifesto completo na interface e tornar jobs longos de exclusão retomáveis após
-   reload/reinício, com progresso assíncrono.
-2. Implementar escolha manual do telefone nos contatos Google ambíguos e ampliar variáveis de
+1. Implementar escolha manual do telefone nos contatos Google ambíguos e ampliar variáveis de
    personalização para os campos sincronizados.
-3. Revisar onboarding/README e executar QA real de OAuth, sincronização, envio e exclusão com contas
+2. Revisar onboarding/README e executar QA real de OAuth, sincronização, envio e exclusão com contas
    de teste antes do merge.
+3. Auditar requisitos restantes do `AGENTS.md`, incluindo acessibilidade do wizard, cobertura das
+   rotas novas e retenção/backup das auditorias.
 
 ## Decisões e cuidados ativos
 

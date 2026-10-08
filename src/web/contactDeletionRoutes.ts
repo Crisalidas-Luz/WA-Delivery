@@ -15,7 +15,21 @@ export function registerContactDeletionRoutes(
         return reply.code(503).send({ message: 'Configure e conecte o Google Contacts primeiro.' });
       const id = parseId(request.params.id);
       if (!id) return reply.code(400).send({ message: 'Identificador da campanha inválido.' });
-      return reply.code(201).send(await service.createAndExecute(id, request.body ?? {}));
+      return reply.code(202).send(service.createAndStart(id, request.body ?? {}));
+    },
+  );
+
+  server.get<{ Params: { id: string } }>(
+    '/api/campaigns/:id/deletion-jobs/latest',
+    async (request, reply) => {
+      if (!service)
+        return reply.code(503).send({ message: 'Configure e conecte o Google Contacts primeiro.' });
+      const id = parseId(request.params.id);
+      if (!id) return reply.code(400).send({ message: 'Identificador da campanha inválido.' });
+      return (
+        service.findLatestForCampaign(id) ??
+        reply.code(404).send({ message: 'Nenhum job de exclusão foi criado para esta campanha.' })
+      );
     },
   );
 
@@ -40,7 +54,7 @@ export function registerContactDeletionRoutes(
       const id = parseId(request.params.id);
       if (!id) return reply.code(400).send({ message: 'Identificador do job inválido.' });
       return (
-        (await service.retry(id)) ??
+        service.retryAndStart(id) ??
         reply.code(404).send({ message: 'Job de exclusão não encontrado.' })
       );
     },

@@ -35,6 +35,9 @@ const recipientList = document.querySelector('#recipient-list');
 const recipientFilter = document.querySelector('#recipient-filter');
 const exportAll = document.querySelector('#export-all');
 const exportFailures = document.querySelector('#export-failures');
+const previousManifestPage = document.querySelector('#previous-manifest-page');
+const nextManifestPage = document.querySelector('#next-manifest-page');
+const manifestPageLabel = document.querySelector('#manifest-page-label');
 const executionZone = document.querySelector('#execution-zone');
 const executionMetrics = document.querySelector('#execution-metrics');
 const startConfirmationLabel = document.querySelector('#start-confirmation-label');
@@ -59,6 +62,7 @@ let selectedMedia;
 let loadedCampaign;
 let campaignIsTerminal = false;
 let currentDeletionJob;
+let deletionPollTimer;
 const selectedForDeletion = new Set();
 
 function showError(text = '') {
@@ -103,6 +107,8 @@ const RECIPIENT_STATUS_LABELS = {
 };
 let allRecipients = [];
 let manifestSummary;
+let manifestPage = 1;
+const manifestPageSize = 50;
 
 function renderRecipients(recipients, summary) {
   allRecipients = recipients;
@@ -123,11 +129,17 @@ function paintRecipients() {
         return recipient.status === filter;
       })
     : allRecipients;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / manifestPageSize));
+  manifestPage = Math.min(manifestPage, totalPages);
+  const pageItems = filtered.slice(
+    (manifestPage - 1) * manifestPageSize,
+    manifestPage * manifestPageSize,
+  );
   recipientSummary.textContent = manifestSummary
     ? `${manifestSummary.selected} selecionados; ${manifestSummary.accepted} envios aceitos; ${manifestSummary.permanentFailures} falhas permanentes; ${manifestSummary.transientFailuresExhausted} falhas transitórias esgotadas; ${manifestSummary.recommendedForDeletion} recomendados para revisão de exclusão. Exibindo ${filtered.length}.`
     : `${allRecipients.length} destinatário(s) nesta campanha (lista fixada no preparo). Exibindo ${filtered.length}.`;
   recipientList.replaceChildren();
-  for (const recipient of filtered.slice(0, 50)) {
+  for (const recipient of pageItems) {
     const article = document.createElement('article');
     article.className = 'message-sample';
     const heading = document.createElement('div');
@@ -189,11 +201,9 @@ function paintRecipients() {
     }
     recipientList.append(article);
   }
-  if (filtered.length > 50) {
-    const remainder = document.createElement('p');
-    remainder.textContent = `Mais ${filtered.length - 50} destinatário(s) neste filtro. Exporte o CSV para a lista completa.`;
-    recipientList.append(remainder);
-  }
+  manifestPageLabel.textContent = `Página ${manifestPage} de ${totalPages}`;
+  previousManifestPage.disabled = manifestPage <= 1;
+  nextManifestPage.disabled = manifestPage >= totalPages;
 }
 
 function canDeleteFromGoogle(recipient) {
@@ -258,8 +268,36 @@ function renderDeletionJob(job) {
     }
     contactDeletionResults.append(article);
   }
-  retryGoogleDeletions.hidden = !job.items.some((item) => item.status === 'failed');
+  const canResume =
+    job.status !== 'running' &&
+    job.items.some((item) => ['failed', 'pending'].includes(item.status));
+  retryGoogleDeletions.hidden = !canResume;
+  retryGoogleDeletions.textContent = job.items.some((item) => item.status === 'pending')
+    ? 'Retomar exclusões pendentes'
+    : 'Tentar novamente as exclusões com falha';
   paintRecipients();
+}
+
+function pollDeletionJob(jobId) {
+  clearTimeout(deletionPollTimer);
+  deletionPollTimer = setTimeout(async () => {
+    try {
+      const job = await request(`/api/contact-deletion-jobs/${jobId}`);
+      renderDeletionJob(job);
+      if (['pending', 'running'].includes(job.status)) pollDeletionJob(job.id);
+    } catch (error) {
+      showError(error.message);
+    }
+  }, 1000);
+}
+
+async function loadLatestDeletionJob() {
+  const response = await fetch(`/api/campaigns/${campaignId}/deletion-jobs/latest`);
+  if (response.status === 404 || response.status === 503) return;
+  const job = await response.json();
+  if (!response.ok) throw new Error(job.message || 'Não foi possível carregar a auditoria.');
+  renderDeletionJob(job);
+  if (['pending', 'running'].includes(job.status)) pollDeletionJob(job.id);
 }
 
 function applyLockedState(campaign, recipients, summary) {
@@ -309,6 +347,8 @@ function renderProgress(progress) {
   const terminal = ['completed', 'cancelled', 'failed'].includes(progress.status);
   campaignIsTerminal = terminal;
   updateDeletionControls();
+  if (terminal && !currentDeletionJob)
+    void loadLatestDeletionJob().catch((error) => showError(error.message));
   // O checkbox de confirmação só aparece quando a campanha está pronta e ainda
   // não iniciou. Ao iniciar, ele some e o estado fica claro.
   startConfirmationLabel.hidden = !ready;
@@ -512,7 +552,21 @@ events.addEventListener('campaign-progress', (event) => {
     .catch(() => {});
 });
 
-if (recipientFilter) recipientFilter.addEventListener('change', paintRecipients);
+if (recipientFilter)
+  recipientFilter.addEventListener('change', () => {
+    manifestPage = 1;
+    paintRecipients();
+  });
+if (previousManifestPage)
+  previousManifestPage.addEventListener('click', () => {
+    manifestPage -= 1;
+    paintRecipients();
+  });
+if (nextManifestPage)
+  nextManifestPage.addEventListener('click', () => {
+    manifestPage += 1;
+    paintRecipients();
+  });
 if (contactDeletionConfirmation)
   contactDeletionConfirmation.addEventListener('change', updateDeletionControls);
 if (deleteGoogleContacts) {
@@ -538,6 +592,7 @@ if (deleteGoogleContacts) {
         }),
       });
       renderDeletionJob(job);
+      if (['pending', 'running'].includes(job.status)) pollDeletionJob(job.id);
     } catch (error) {
       showError(error.message);
       updateDeletionControls();
@@ -555,6 +610,7 @@ if (retryGoogleDeletions) {
           method: 'POST',
         }),
       );
+      pollDeletionJob(currentDeletionJob.id);
     } catch (error) {
       showError(error.message);
     } finally {

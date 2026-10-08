@@ -26,6 +26,8 @@ const ALLOWED_REASONS = new Set<ContactDeletionItem['reasonCode']>([
 ]);
 
 export class ContactDeletionService {
+  private readonly activeJobs = new Set<number>();
+
   public constructor(
     private readonly repository: ContactDeletionRepository,
     private readonly campaigns: CampaignService,
@@ -41,10 +43,31 @@ export class ContactDeletionService {
     return this.repository.find(id);
   }
 
+  public findLatestForCampaign(campaignId: number): ContactDeletionJob | undefined {
+    return this.repository.findLatestForCampaign(campaignId);
+  }
+
+  public recoverInterrupted(): number {
+    return this.repository.recoverInterrupted();
+  }
+
   public async createAndExecute(
     campaignId: number,
     input: CreateContactDeletionJobInput,
   ): Promise<ContactDeletionJob> {
+    const job = this.createJob(campaignId, input);
+    return this.execute(job.id);
+  }
+
+  public createAndStart(
+    campaignId: number,
+    input: CreateContactDeletionJobInput,
+  ): ContactDeletionJob {
+    const job = this.createJob(campaignId, input);
+    return this.startInBackground(job.id, false);
+  }
+
+  private createJob(campaignId: number, input: CreateContactDeletionJobInput): ContactDeletionJob {
     if (input.confirmed !== true) {
       throw new ContactDeletionValidationError(
         'Confirme explicitamente que deseja excluir os contatos selecionados da conta Google.',
@@ -77,8 +100,7 @@ export class ContactDeletionService {
         'A seleção contém mais de um destinatário vinculado ao mesmo contato Google.',
       );
     }
-    const job = this.repository.create(campaignId, input.filterSnapshot ?? {}, items);
-    return this.execute(job.id);
+    return this.repository.create(campaignId, input.filterSnapshot ?? {}, items);
   }
 
   public async retry(id: number): Promise<ContactDeletionJob | undefined> {
@@ -93,6 +115,31 @@ export class ContactDeletionService {
       );
     }
     return this.execute(id);
+  }
+
+  public retryAndStart(id: number): ContactDeletionJob | undefined {
+    const job = this.repository.find(id);
+    if (!job) return undefined;
+    return this.startInBackground(id, true);
+  }
+
+  private startInBackground(id: number, resetFailed: boolean): ContactDeletionJob {
+    if (this.activeJobs.has(id)) return this.repository.find(id) as ContactDeletionJob;
+    const job = this.repository.find(id);
+    if (!job) throw new ContactDeletionValidationError('Job de exclusão não encontrado.');
+    if (job.status === 'running') {
+      throw new ContactDeletionValidationError('Este job de exclusão já está em execução.');
+    }
+    if (resetFailed) this.repository.retryFailed(id);
+    const current = this.repository.find(id) as ContactDeletionJob;
+    if (!current.items.some((item) => item.status === 'pending')) {
+      throw new ContactDeletionValidationError('Não existem exclusões pendentes para retomar.');
+    }
+    this.activeJobs.add(id);
+    void this.execute(id)
+      .catch(() => this.repository.failJob(id))
+      .finally(() => this.activeJobs.delete(id));
+    return this.repository.find(id) as ContactDeletionJob;
   }
 
   private toDeletionItem(recipient: CampaignRecipientSnapshot) {

@@ -231,4 +231,43 @@ describe('ContactDeletionService', () => {
     assert.equal(job.items[0]?.lastErrorCode, 'google_authorization');
     assert.doesNotMatch(job.items[0]?.lastErrorMessage ?? '', /403/);
   });
+
+  it('inicia em segundo plano e permite acompanhar pelo registro persistido', async () => {
+    const { service, campaignId, recipientId } = setup({
+      reason: 'invalid_phone',
+      phones: ['123'],
+    });
+    const started = service.createAndStart(campaignId, {
+      confirmed: true,
+      recipientIds: [recipientId],
+    });
+    assert.equal(started.status, 'running');
+    for (let index = 0; index < 20 && service.find(started.id)?.status === 'running'; index += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    assert.equal(service.find(started.id)?.status, 'completed');
+    assert.equal(service.findLatestForCampaign(campaignId)?.id, started.id);
+  });
+
+  it('recupera de forma conservadora uma exclusão interrompida', async () => {
+    const { database, service, campaignId, recipientId } = setup({
+      reason: 'invalid_phone',
+      phones: ['123'],
+    });
+    const completed = await service.createAndExecute(campaignId, {
+      confirmed: true,
+      recipientIds: [recipientId],
+    });
+    database
+      .prepare("UPDATE contact_deletion_jobs SET status = 'running' WHERE id = ?")
+      .run(completed.id);
+    database
+      .prepare("UPDATE contact_deletion_items SET status = 'deleting' WHERE job_id = ?")
+      .run(completed.id);
+    assert.equal(service.recoverInterrupted(), 1);
+    const recovered = service.find(completed.id);
+    assert.equal(recovered?.status, 'failed');
+    assert.equal(recovered?.items[0]?.status, 'failed');
+    assert.equal(recovered?.items[0]?.lastErrorCode, 'interrupted_unknown_outcome');
+  });
 });
