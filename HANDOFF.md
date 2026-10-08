@@ -10,6 +10,9 @@ pendências e próximo passo. Não substituir o plano completo de produto em `AG
 
 - Branch de desenvolvimento: `feat/google-contacts-campaign-flow`
 - Base: `main` no commit `cfc3881`
+- Último commit funcional antes da pausa: `11b2044` (`feat: add structured campaign manifest`)
+- Sessão pausada a pedido do usuário em 07/10/2026; não há implementação parcialmente editada no
+  worktree neste checkpoint.
 - Etapa em andamento: Fase 3 — campanhas Google e lotes
 - Merge para `main`: proibido até validação integral e aprovação do usuário
 
@@ -212,6 +215,13 @@ Manifesto estruturado e semântica de resultado:
 1. Implementar revisão e jobs auditáveis de exclusão Google.
 2. Confirmar cada exclusão, executar sequencialmente e verificar por sincronização.
 3. Evoluir o editor visual para grupos `E`/`OU` aninhados sem perder ASTs já salvas.
+
+Ao retomar, começar pelo módulo `src/modules/contact-deletion`. A migration v10 já contém
+`contact_deletion_jobs` e `contact_deletion_items`, e o provedor Google já implementa
+`getContact`/`deleteContact`; falta expor essas operações de forma segura pelo `GoogleAuthService`,
+implementar repositório/serviço/rotas, compor as dependências, criar a revisão destrutiva na UI e
+cobrir o fluxo com testes. A execução deve permanecer sequencial, nunca automática, e só aceitar
+evidências fortes (`missing_phone`, `invalid_phone` ou `not_on_whatsapp`).
 
 ## Decisões e cuidados ativos
 
