@@ -34,6 +34,7 @@ class AuthProvider implements GooglePeopleProvider {
   public revoked = 0;
   public refreshed = 0;
   public listed = 0;
+  public listWait: Promise<void> | undefined;
   public async createAuthorizationRequest(): Promise<GoogleOAuthStart> {
     return {
       authorizationUrl: 'https://accounts.example/auth',
@@ -71,6 +72,7 @@ class AuthProvider implements GooglePeopleProvider {
     _input: ListGoogleContactsInput,
   ): Promise<GoogleContactsPage> {
     this.listed += 1;
+    await this.listWait;
     return { contacts: [], nextSyncToken: 'sync' };
   }
   public async getContact(): Promise<GoogleContactRecord | undefined> {
@@ -93,6 +95,15 @@ function setup() {
   return { database, repository, provider, store, service };
 }
 
+async function waitForSync(service: GoogleAuthService) {
+  for (let index = 0; index < 20; index += 1) {
+    const status = await service.status();
+    if (status.sync.status !== 'running') return status;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  throw new Error('A sincronização Google não terminou no teste.');
+}
+
 describe('GoogleAuthService', () => {
   it('conclui login, persiste sessão e renova token expirado ao sincronizar', async () => {
     const { database, provider, store, service } = setup();
@@ -102,7 +113,7 @@ describe('GoogleAuthService', () => {
       assert.equal(provider.listed, 1);
       assert.equal(provider.refreshed, 1);
       assert.equal(store.values.get('google:sub')?.accessToken, 'new');
-      assert.equal((await service.status()).sync.status, 'completed');
+      assert.equal((await waitForSync(service)).sync.status, 'completed');
       await service.synchronize();
       assert.equal(provider.refreshed, 1);
       assert.equal(store.values.get('google:sub')?.accessToken, 'new');
@@ -157,6 +168,32 @@ describe('rotas Google', () => {
       });
       assert.equal(denied.statusCode, 400);
       assert.match(denied.json().message, /cancelado|recusado/);
+    } finally {
+      await server.close();
+      database.close();
+    }
+  });
+
+  it('inicia sincronização assíncrona e expõe o estado em rota própria', async () => {
+    const { database, provider, service } = setup();
+    await service.finishAuthorization('code', 'state');
+    await waitForSync(service);
+    let release: (() => void) | undefined;
+    provider.listWait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const server = Fastify();
+    registerGoogleRoutes(server, service);
+    try {
+      const started = await server.inject({ method: 'POST', url: '/api/google/sync' });
+      assert.equal(started.statusCode, 202);
+      assert.equal(started.json().sync.status, 'running');
+      release?.();
+      provider.listWait = undefined;
+      await waitForSync(service);
+      const status = await server.inject({ method: 'GET', url: '/api/google/sync/status' });
+      assert.equal(status.statusCode, 200);
+      assert.equal(status.json().status, 'completed');
     } finally {
       await server.close();
       database.close();

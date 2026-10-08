@@ -91,17 +91,26 @@ export class GoogleAuthService {
     }
     // A primeira sincronização faz parte da conclusão do login. Se ela falhar, a conta continua
     // conectada e o estado persistido permite explicar o erro e repetir pela interface.
-    try {
-      await this.synchronize();
-    } catch {
-      // GoogleContactsSyncService já persistiu o erro seguro para apresentação e diagnóstico.
-    }
-    return this.status();
+    return this.startSynchronization();
   }
 
   public async synchronize(): Promise<{ created: number; updated: number; deleted: number }> {
     const tokens = await this.validTokens();
     return this.syncService.sync(tokens);
+  }
+
+  /** Inicia a sincronização sem manter a requisição HTTP aberta; o estado persistido permite polling. */
+  public async startSynchronization(): Promise<GoogleConnectionStatus> {
+    const tokens = await this.validTokens();
+    if (this.syncService.isRunning) {
+      const error = new Error('Já existe uma sincronização do Google Contacts em andamento.');
+      Object.assign(error, { statusCode: 409 });
+      throw error;
+    }
+    void this.syncService.sync(tokens).catch(() => {
+      // O serviço persiste status/erro. A falha será apresentada por /api/google/status.
+    });
+    return this.status();
   }
 
   /** Executa leituras remotas sem expor tokens para as camadas de domínio. */

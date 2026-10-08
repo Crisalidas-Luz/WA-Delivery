@@ -34,7 +34,12 @@ export function registerGoogleRoutes(server: FastifyInstance, google?: GoogleAut
 
   server.post('/api/google/sync', async (_request, reply) => {
     if (!google) return notConfigured(reply);
-    return reply.code(202).send(await google.synchronize());
+    return reply.code(202).send(await google.startSynchronization());
+  });
+
+  server.get('/api/google/sync/status', async (_request, reply) => {
+    if (!google) return notConfigured(reply);
+    return (await google.status()).sync;
   });
 
   server.post('/api/google/disconnect', async (_request, reply) => {

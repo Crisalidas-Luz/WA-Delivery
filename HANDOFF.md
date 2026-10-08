@@ -11,7 +11,8 @@ pendências e próximo passo. Não substituir o plano completo de produto em `AG
 - Branch de desenvolvimento: `feat/google-contacts-campaign-flow`
 - Base: `main` no commit `cfc3881`
 - Checkpoint anterior à retomada: `2eb690b` (`docs: checkpoint paused development state`).
-- Etapa em andamento: Fase 3 — campanhas Google e lotes
+- Estado da sessão: pausada a pedido do usuário após concluir a sincronização Google assíncrona
+- Etapa de retomada: revisão de acessibilidade/progresso e auditoria final dos requisitos
 - Merge para `main`: proibido até validação integral e aprovação do usuário
 
 ## Progresso
@@ -398,12 +399,26 @@ Endurecimento do OAuth Google:
 - testes cobrem callback negado, state expirado sem chamada ao endpoint de token e autorização sem
   escopo, comprovando que access/refresh tokens não aparecem na mensagem de erro.
 
+Sincronização Google assíncrona e retomável na interface:
+
+- a conclusão do OAuth e a ação manual iniciam a sincronização em segundo plano e devolvem a
+  resposta HTTP imediatamente, sem manter a navegação bloqueada durante agendas grandes;
+- `POST /api/google/sync` responde `202` com o estado persistido e
+  `GET /api/google/sync/status` permite consultar a execução separadamente;
+- a página de configurações observa o estado a cada segundo, mantém o botão desabilitado enquanto
+  a sincronização está ativa e volta a acompanhá-la após um reload;
+- o término mostra os contadores persistidos de contatos criados, atualizados e removidos, enquanto
+  erros continuam disponíveis no status seguro da sincronização;
+- uma segunda sincronização simultânea continua recusada com `409`;
+- teste de rota mantém uma página remota propositalmente pendente, comprova a resposta imediata e o
+  estado `running`, libera o trabalho e confirma o estado final pela rota de polling.
+
 ## Validações da última etapa
 
 - `npm.cmd run typecheck`: passou.
 - `npm.cmd run lint`: passou.
 - `npm.cmd run format`: passou e normalizou os arquivos alterados.
-- `npm.cmd test`: 188 testes passaram, 0 falharam.
+- `npm.cmd test`: 189 testes passaram, 0 falharam.
 - `npm.cmd run build`: passou.
 - `node --check public/settings.js` e `node --check public/campaign.js`: passaram.
 - Observação do ambiente: dentro do sandbox, o loader `tsx` falhou em `uv_os_get_passwd` com

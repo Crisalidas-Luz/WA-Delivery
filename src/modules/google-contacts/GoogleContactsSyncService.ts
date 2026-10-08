@@ -20,6 +20,10 @@ export class GoogleContactsSyncService {
     private readonly settings?: SettingsService,
   ) {}
 
+  public get isRunning(): boolean {
+    return this.activeSync !== undefined;
+  }
+
   public async sync(
     tokens: GoogleTokenSet,
   ): Promise<{ created: number; updated: number; deleted: number }> {

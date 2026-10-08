@@ -92,6 +92,7 @@ const googleSuccess = document.querySelector('#google-success');
 const googleConnect = document.querySelector('#google-connect');
 const googleSync = document.querySelector('#google-sync');
 const googleDisconnect = document.querySelector('#google-disconnect');
+let googleStatusPollTimer;
 
 function showGoogleError(message = '') {
   googleError.textContent = message;
@@ -100,6 +101,7 @@ function showGoogleError(message = '') {
 }
 
 async function loadGoogleStatus() {
+  clearTimeout(googleStatusPollTimer);
   try {
     const response = await fetch('/api/google/status');
     if (!response.ok) throw new Error(`Falha HTTP ${response.status}`);
@@ -129,6 +131,13 @@ async function loadGoogleStatus() {
       const failure = state.sync.error ? ` ${state.sync.error.message}` : '';
       googleSyncStatus.textContent = `Sincronização: ${state.sync.status}${state.sync.type ? ` (${state.sync.type})` : ''}.${details}${failure}`;
       googleSync.disabled = state.sync.status === 'running';
+      if (state.sync.status === 'running') {
+        googleStatusPollTimer = setTimeout(() => void loadGoogleStatus(), 1000);
+      }
+      if (state.sync.status === 'completed' && latestAt) {
+        googleSuccess.textContent = `Sincronização concluída: ${state.sync.created} novo(s), ${state.sync.updated} atualizado(s) e ${state.sync.deleted} removido(s).`;
+        googleSuccess.hidden = false;
+      }
     }
   } catch (error) {
     showGoogleError(`Não foi possível consultar o Google Contacts: ${error.message}`);
@@ -157,12 +166,12 @@ googleSync.addEventListener('click', async () => {
     const response = await fetch('/api/google/sync', { method: 'POST' });
     const body = await response.json();
     if (!response.ok) throw new Error(body.message || `Falha HTTP ${response.status}`);
-    googleSuccess.textContent = `Sincronização concluída: ${body.created} novo(s), ${body.updated} atualizado(s) e ${body.deleted} removido(s).`;
+    googleSuccess.textContent =
+      'Sincronização iniciada. O progresso continuará mesmo após recarregar esta página.';
     googleSuccess.hidden = false;
     await loadGoogleStatus();
   } catch (error) {
     showGoogleError(`Não foi possível sincronizar: ${error.message}`);
-  } finally {
     googleSync.disabled = false;
   }
 });
@@ -191,7 +200,7 @@ googleDisconnect.addEventListener('click', async () => {
 });
 
 if (new URLSearchParams(location.search).get('google') === 'connected') {
-  googleSuccess.textContent = 'Conta Google conectada. A sincronização inicial foi processada.';
+  googleSuccess.textContent = 'Conta Google conectada. A sincronização inicial foi iniciada.';
   googleSuccess.hidden = false;
   history.replaceState({}, '', '/settings.html');
 }
