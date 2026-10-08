@@ -150,6 +150,14 @@
           <p id="recipient-summary"></p>
           <div class="recipient-toolbar">
             <label
+              >Buscar no manifesto
+              <input
+                id="recipient-search"
+                type="search"
+                placeholder="Nome, telefone, motivo ou resultado"
+              />
+            </label>
+            <label
               >Filtrar manifesto
               <select id="recipient-filter">
                 <option value="">Todos</option>
@@ -157,12 +165,27 @@
                 <option value="status:pending">Pendentes</option>
                 <option value="status:failed">Falhas</option>
                 <option value="status:skipped">Ignorados</option>
+                <option value="result:permanent_failure">Falhas permanentes</option>
+                <option value="result:transient_failure_exhausted">
+                  Falhas transitórias esgotadas
+                </option>
                 <option value="eligibility:not_on_whatsapp">Fora do WhatsApp</option>
                 <option value="eligibility:missing_phone">Sem telefone</option>
                 <option value="eligibility:invalid_phone">Telefone inválido</option>
                 <option value="eligibility:duplicate_phone">Duplicados</option>
                 <option value="eligibility:opted_out">Opt-out</option>
                 <option value="recommendation:recommended">Exclusão recomendada</option>
+                <option value="recommendation:review">Revisão manual recomendada</option>
+              </select>
+            </label>
+            <label
+              >Ordenar por
+              <select id="recipient-order">
+                <option value="batch">Lote e posição</option>
+                <option value="name">Nome</option>
+                <option value="result">Resultado</option>
+                <option value="attempts">Mais tentativas</option>
+                <option value="latest">Última atualização</option>
               </select>
             </label>
             <div class="recipient-export">

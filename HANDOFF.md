@@ -298,6 +298,19 @@ Sincronização Google observável e exclusiva:
   enquanto o estado está em execução e informa que a sincronização inicial foi processada;
 - mensagens de falha persistidas passam pelo mascaramento de telefones e possíveis credenciais.
 
+Leitura e filtragem do manifesto:
+
+- a revisão permite busca textual insensível a caixa e acentos por nome, telefone, status, código,
+  motivo, erro e recomendação;
+- foram adicionados filtros específicos para falha permanente, falha transitória esgotada e revisão
+  manual, preservando os atalhos seguros de telefone inválido e fora do WhatsApp;
+- a ordenação pode usar lote/posição, nome, resultado, quantidade de tentativas ou atualização mais
+  recente, com desempate determinístico pelo ID do snapshot;
+- cada destinatário mostra origem, elegibilidade, resultado estruturado, lote, tentativas e última
+  atualização, além dos motivos já existentes;
+- filtro, texto pesquisado e ordenação passam a integrar o snapshot de revisão gravado no job de
+  exclusão; a busca não pré-seleciona contatos nem amplia a política de exclusão segura.
+
 ## Validações da última etapa
 
 - `npm.cmd run typecheck`: passou.
@@ -313,9 +326,9 @@ Sincronização Google observável e exclusiva:
 
 ## Próximo passo
 
-1. Melhorar filtros, busca e ordenação do manifesto persistido.
-2. Permitir editar a seleção Google de um rascunho existente sem criar outra campanha.
-3. Auditar estados `already_missing` em corridas de exclusão e feedback de retomada da fila.
+1. Permitir editar a seleção Google de um rascunho existente sem criar outra campanha.
+2. Auditar estados `already_missing` em corridas de exclusão e feedback de retomada da fila.
+3. Revisar acessibilidade/progresso de operações longas e a cobertura do fluxo visual.
 4. Executar QA real de OAuth, sincronização, envio e exclusão com contas de teste antes do merge.
 
 ## Decisões e cuidados ativos

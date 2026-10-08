@@ -33,6 +33,8 @@ const recipientReview = document.querySelector('#recipient-review');
 const recipientSummary = document.querySelector('#recipient-summary');
 const recipientList = document.querySelector('#recipient-list');
 const recipientFilter = document.querySelector('#recipient-filter');
+const recipientSearch = document.querySelector('#recipient-search');
+const recipientOrder = document.querySelector('#recipient-order');
 const exportAll = document.querySelector('#export-all');
 const exportFailures = document.querySelector('#export-failures');
 const previousManifestPage = document.querySelector('#previous-manifest-page');
@@ -122,15 +124,20 @@ function renderRecipients(recipients, summary) {
 function paintRecipients() {
   const filter = recipientFilter?.value || '';
   const [filterKind, filterValue] = filter.split(':');
-  const filtered = filter
+  const searched = filter
     ? allRecipients.filter((recipient) => {
         if (filterKind === 'status') return recipient.status === filterValue;
+        if (filterKind === 'result') return recipient.resultCode === filterValue;
         if (filterKind === 'eligibility') return recipient.eligibilityStatus === filterValue;
         if (filterKind === 'recommendation')
           return recipient.deletionRecommendation === filterValue;
         return recipient.status === filter;
       })
     : allRecipients;
+  const query = searchable(recipientSearch?.value || '');
+  const filtered = searched
+    .filter((recipient) => !query || searchable(recipientSearchText(recipient)).includes(query))
+    .toSorted(recipientComparator(recipientOrder?.value || 'batch'));
   const totalPages = Math.max(1, Math.ceil(filtered.length / manifestPageSize));
   manifestPage = Math.min(manifestPage, totalPages);
   const pageItems = filtered.slice(
@@ -178,12 +185,32 @@ function paintRecipients() {
     batch.className = 'recipient-attempts';
     batch.textContent = `Lote ${recipient.batchNumber}`;
     meta.append(batch);
+    const eligibility = document.createElement('span');
+    eligibility.className = 'recipient-attempts';
+    eligibility.textContent = `Elegibilidade: ${recipient.eligibilityStatus}`;
+    meta.append(eligibility);
+    if (recipient.resultCode) {
+      const result = document.createElement('span');
+      result.className = 'recipient-attempts';
+      result.textContent = `Resultado: ${recipient.resultCode}`;
+      meta.append(result);
+    }
     if (recipient.attemptCount) {
       const attempts = document.createElement('span');
       attempts.className = 'recipient-attempts';
       attempts.textContent = `${recipient.attemptCount} tentativa(s)`;
       meta.append(attempts);
     }
+    if (recipient.updatedAt || recipient.sentAt) {
+      const lastAttempt = document.createElement('span');
+      lastAttempt.className = 'recipient-attempts';
+      lastAttempt.textContent = `Última atualização: ${new Date(recipient.updatedAt || recipient.sentAt).toLocaleString()}`;
+      meta.append(lastAttempt);
+    }
+    const source = document.createElement('span');
+    source.className = 'recipient-attempts';
+    source.textContent = recipient.googleContactId ? 'Origem: Google' : 'Origem: lista local';
+    meta.append(source);
 
     const renderedMessage = document.createElement('p');
     renderedMessage.className = 'message-body';
@@ -206,6 +233,56 @@ function paintRecipients() {
   manifestPageLabel.textContent = `Página ${manifestPage} de ${totalPages}`;
   previousManifestPage.disabled = manifestPage <= 1;
   nextManifestPage.disabled = manifestPage >= totalPages;
+}
+
+function searchable(value) {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('pt-BR');
+}
+
+function recipientSearchText(recipient) {
+  return [
+    recipient.name,
+    recipient.phone,
+    recipient.phoneOriginal,
+    recipient.phoneLabel,
+    recipient.status,
+    recipient.eligibilityStatus,
+    recipient.resultCode,
+    recipient.resultReason,
+    recipient.lastError,
+    recipient.deletionRecommendation,
+    recipient.deletionReasonCode,
+  ].join(' ');
+}
+
+function recipientComparator(order) {
+  const byId = (left, right) => left.id - right.id;
+  if (order === 'name') {
+    return (left, right) =>
+      left.name.localeCompare(right.name, 'pt-BR', { sensitivity: 'base' }) || byId(left, right);
+  }
+  if (order === 'result') {
+    return (left, right) =>
+      String(left.resultCode || left.eligibilityStatus).localeCompare(
+        String(right.resultCode || right.eligibilityStatus),
+        'pt-BR',
+      ) || byId(left, right);
+  }
+  if (order === 'attempts') {
+    return (left, right) => right.attemptCount - left.attemptCount || byId(left, right);
+  }
+  if (order === 'latest') {
+    return (left, right) =>
+      Date.parse(right.updatedAt || right.sentAt || '') -
+        Date.parse(left.updatedAt || left.sentAt || '') || byId(left, right);
+  }
+  return (left, right) =>
+    left.batchNumber - right.batchNumber ||
+    left.positionInBatch - right.positionInBatch ||
+    byId(left, right);
 }
 
 function canDeleteFromGoogle(recipient) {
@@ -563,6 +640,16 @@ if (recipientFilter)
     manifestPage = 1;
     paintRecipients();
   });
+if (recipientSearch)
+  recipientSearch.addEventListener('input', () => {
+    manifestPage = 1;
+    paintRecipients();
+  });
+if (recipientOrder)
+  recipientOrder.addEventListener('change', () => {
+    manifestPage = 1;
+    paintRecipients();
+  });
 if (previousManifestPage)
   previousManifestPage.addEventListener('click', () => {
     manifestPage -= 1;
@@ -594,7 +681,11 @@ if (deleteGoogleContacts) {
         body: JSON.stringify({
           confirmed: true,
           recipientIds: ids,
-          filterSnapshot: { manifestFilter: recipientFilter?.value || '' },
+          filterSnapshot: {
+            manifestFilter: recipientFilter?.value || '',
+            manifestSearch: recipientSearch?.value || '',
+            manifestOrder: recipientOrder?.value || 'batch',
+          },
         }),
       });
       renderDeletionJob(job);
