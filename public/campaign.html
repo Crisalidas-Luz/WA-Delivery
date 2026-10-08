@@ -208,7 +208,9 @@
             Marque individualmente apenas contatos cuja evidência justifique apagar o registro da
             conta Google. Falhas de rede, timeout e erros transitórios não são elegíveis.
           </p>
-          <p id="contact-deletion-summary">Nenhum contato selecionado para exclusão.</p>
+          <p id="contact-deletion-summary" role="status">
+            Nenhum contato selecionado para exclusão.
+          </p>
           <label class="confirmation-check">
             <input id="contact-deletion-confirmation" type="checkbox" />
             Entendo que esta ação apagará permanentemente os contatos selecionados da conta Google.
@@ -221,11 +223,17 @@
               Tentar novamente as exclusões com falha
             </button>
           </div>
-          <div id="contact-deletion-results" class="message-samples"></div>
+          <div
+            id="contact-deletion-results"
+            class="message-samples"
+            role="status"
+            aria-live="polite"
+            aria-busy="false"
+          ></div>
         </section>
         <section id="execution-zone" class="review-zone execution-zone" hidden>
           <h2>Execução da campanha</h2>
-          <p id="execution-notice" class="notice" hidden></p>
+          <p id="execution-notice" class="notice" role="status" aria-live="polite" hidden></p>
           <div id="execution-metrics" class="analysis-cards"></div>
           <label id="start-confirmation-label" class="confirmation-check">
             <input id="start-confirmation" type="checkbox" />

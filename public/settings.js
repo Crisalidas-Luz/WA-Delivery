@@ -92,6 +92,7 @@ const googleSuccess = document.querySelector('#google-success');
 const googleConnect = document.querySelector('#google-connect');
 const googleSync = document.querySelector('#google-sync');
 const googleDisconnect = document.querySelector('#google-disconnect');
+const googleCard = document.querySelector('#google-contacts-card');
 let googleStatusPollTimer;
 
 function showGoogleError(message = '') {
@@ -102,10 +103,12 @@ function showGoogleError(message = '') {
 
 async function loadGoogleStatus() {
   clearTimeout(googleStatusPollTimer);
+  googleCard.setAttribute('aria-busy', 'true');
   try {
     const response = await fetch('/api/google/status');
     if (!response.ok) throw new Error(`Falha HTTP ${response.status}`);
     const state = await response.json();
+    googleCard.setAttribute('aria-busy', 'false');
     googleStatus.textContent = !state.configured
       ? 'Não configurado'
       : state.connected
@@ -131,6 +134,7 @@ async function loadGoogleStatus() {
       const failure = state.sync.error ? ` ${state.sync.error.message}` : '';
       googleSyncStatus.textContent = `Sincronização: ${state.sync.status}${state.sync.type ? ` (${state.sync.type})` : ''}.${details}${failure}`;
       googleSync.disabled = state.sync.status === 'running';
+      googleCard.setAttribute('aria-busy', String(state.sync.status === 'running'));
       if (state.sync.status === 'running') {
         googleStatusPollTimer = setTimeout(() => void loadGoogleStatus(), 1000);
       }
@@ -140,6 +144,7 @@ async function loadGoogleStatus() {
       }
     }
   } catch (error) {
+    googleCard.setAttribute('aria-busy', 'false');
     showGoogleError(`Não foi possível consultar o Google Contacts: ${error.message}`);
   }
 }

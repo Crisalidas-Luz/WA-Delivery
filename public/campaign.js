@@ -321,6 +321,8 @@ function updateDeletionControls() {
 
 function renderDeletionJob(job) {
   currentDeletionJob = job;
+  const jobActive = ['pending', 'running'].includes(job.status);
+  contactDeletionResults.setAttribute('aria-busy', String(jobActive));
   selectedForDeletion.clear();
   contactDeletionConfirmation.checked = false;
   contactDeletionResults.replaceChildren();
@@ -352,6 +354,7 @@ function renderDeletionJob(job) {
     job.status !== 'running' &&
     job.items.some((item) => ['failed', 'pending'].includes(item.status));
   retryGoogleDeletions.hidden = !canResume;
+  deleteGoogleContacts.disabled = jobActive;
   retryGoogleDeletions.textContent = job.items.some((item) => item.status === 'pending')
     ? 'Retomar exclusões pendentes'
     : 'Tentar novamente as exclusões com falha';
@@ -366,6 +369,7 @@ function pollDeletionJob(jobId) {
       renderDeletionJob(job);
       if (['pending', 'running'].includes(job.status)) pollDeletionJob(job.id);
     } catch (error) {
+      contactDeletionResults.setAttribute('aria-busy', 'false');
       showError(error.message);
     }
   }, 1000);

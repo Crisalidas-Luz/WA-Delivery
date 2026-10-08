@@ -31,7 +31,7 @@
         </li>
       </ol>
 
-      <div id="monitor-error" class="error" hidden></div>
+      <div id="monitor-error" class="error" role="alert" hidden></div>
 
       <section id="monitor-empty" class="card" hidden>
         <h2>Nenhuma campanha em execução</h2>
@@ -45,7 +45,7 @@
         <div class="section-heading">
           <div>
             <strong id="monitor-name">Campanha</strong>
-            <p id="monitor-status">Status</p>
+            <p id="monitor-status" role="status" aria-live="polite">Status</p>
           </div>
           <a id="monitor-open" class="secondary button-link" href="#">Abrir campanha</a>
         </div>
@@ -59,7 +59,16 @@
 
         <div id="monitor-metrics" class="analysis-cards"></div>
 
-        <div class="monitor-progress">
+        <div
+          id="monitor-progress"
+          class="monitor-progress"
+          role="progressbar"
+          aria-label="Progresso da campanha"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-valuenow="0"
+          aria-valuetext="0% concluído"
+        >
           <div class="monitor-bar"><div id="monitor-bar-fill" class="monitor-bar-fill"></div></div>
           <span id="monitor-percent">0%</span>
         </div>

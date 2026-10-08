@@ -11,6 +11,7 @@ const resumeNotice = document.querySelector('#monitor-resume-notice');
 const monitorActions = document.querySelector('#monitor-actions');
 const resumeButton = document.querySelector('#monitor-resume');
 const metricsEl = document.querySelector('#monitor-metrics');
+const progressEl = document.querySelector('#monitor-progress');
 const barFill = document.querySelector('#monitor-bar-fill');
 const percentEl = document.querySelector('#monitor-percent');
 const factStart = document.querySelector('#fact-start');
@@ -82,6 +83,8 @@ function renderProgress(progress) {
   const percent = progress.total > 0 ? Math.round((done / progress.total) * 100) : 0;
   barFill.style.width = `${percent}%`;
   percentEl.textContent = `${percent}%`;
+  progressEl.setAttribute('aria-valuenow', String(percent));
+  progressEl.setAttribute('aria-valuetext', `${percent}% concluído; ${done} de ${progress.total}`);
 
   metricsEl.replaceChildren();
   for (const [label, value] of [

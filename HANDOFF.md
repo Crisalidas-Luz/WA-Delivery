@@ -11,8 +11,8 @@ pendências e próximo passo. Não substituir o plano completo de produto em `AG
 - Branch de desenvolvimento: `feat/google-contacts-campaign-flow`
 - Base: `main` no commit `cfc3881`
 - Checkpoint anterior à retomada: `2eb690b` (`docs: checkpoint paused development state`).
-- Estado da sessão: pausada a pedido do usuário após concluir a sincronização Google assíncrona
-- Etapa de retomada: revisão de acessibilidade/progresso e auditoria final dos requisitos
+- Estado da sessão: retomada; primeiro bloco da revisão de acessibilidade/progresso concluído
+- Etapa de retomada: auditoria final dos requisitos e ampliação da cobertura de rotas/UI
 - Merge para `main`: proibido até validação integral e aprovação do usuário
 
 ## Progresso
@@ -413,14 +413,31 @@ Sincronização Google assíncrona e retomável na interface:
 - teste de rota mantém uma página remota propositalmente pendente, comprova a resposta imediata e o
   estado `running`, libera o trabalho e confirma o estado final pela rota de polling.
 
+Acessibilidade de operações longas:
+
+- a sincronização Google expõe uma região viva de estado e marca o cartão como ocupado durante a
+  consulta e durante a sincronização persistida;
+- mensagens de sucesso e erro em configurações, limpeza e restauração receberam semântica de
+  `status`/`alert` para tecnologias assistivas;
+- a barra do monitor passou a ser um `progressbar` com percentual e contagem processada atualizados
+  em `aria-valuenow`/`aria-valuetext`;
+- estado de execução e espera da campanha é anunciado de forma não intrusiva;
+- exclusões Google marcam a lista de resultados como ocupada enquanto o job está ativo e anunciam
+  as atualizações persistidas;
+- testes estáticos protegem os contratos de acessibilidade das três operações longas.
+
 ## Validações da última etapa
 
 - `npm.cmd run typecheck`: passou.
 - `npm.cmd run lint`: passou.
 - `npm.cmd run format`: passou e normalizou os arquivos alterados.
-- `npm.cmd test`: 189 testes passaram, 0 falharam.
+- `npm.cmd test`: 192 testes passaram, 0 falharam.
 - `npm.cmd run build`: passou.
 - `node --check public/settings.js` e `node --check public/campaign.js`: passaram.
+- `node --check public/monitor.js`: passou.
+- `git diff --check`: passou.
+- QA visual automatizado não pôde ser executado nesta sessão: o controle de interface não encontrou
+  navegador ou janela disponível (`apps: []`, `browsers: []`).
 - Observação do ambiente: dentro do sandbox, o loader `tsx` falhou em `uv_os_get_passwd` com
   `ENOMEM`; a mesma suíte executada fora do sandbox passou integralmente.
 - `npm ci` reportou uma vulnerabilidade de severidade alta em dependência; ainda precisa ser
@@ -428,9 +445,9 @@ Sincronização Google assíncrona e retomável na interface:
 
 ## Próximo passo
 
-1. Revisar acessibilidade/progresso de operações longas e a cobertura do fluxo visual.
-2. Auditar requisitos do `AGENTS.md` ainda sem evidência direta e ampliar testes de rotas/UI.
-3. Revisar proteção de payload, paginação e progresso visual da sincronização/exclusão.
+1. Auditar requisitos do `AGENTS.md` ainda sem evidência direta e ampliar testes de rotas/UI.
+2. Revisar proteção de payload, paginação e progresso visual da sincronização/exclusão.
+3. Executar QA visual em um ambiente com navegador disponível.
 4. Executar QA real de OAuth, sincronização, envio e exclusão com contas de teste antes do merge.
 
 ## Decisões e cuidados ativos

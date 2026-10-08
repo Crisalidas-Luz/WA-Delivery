@@ -122,8 +122,10 @@
             </label>
           </fieldset>
 
-          <p id="settings-error" class="error" hidden></p>
-          <p id="settings-success" class="success" hidden>Configurações salvas.</p>
+          <p id="settings-error" class="error" role="alert" hidden></p>
+          <p id="settings-success" class="success" role="status" hidden>
+            Configurações salvas.
+          </p>
 
           <div class="actions">
             <button id="save-button" type="submit">Salvar configurações</button>
@@ -131,7 +133,7 @@
         </form>
       </section>
 
-      <section class="card" id="google-contacts-card">
+      <section class="card" id="google-contacts-card" aria-busy="true">
         <div class="section-heading">
           <div>
             <h2>Google Contacts</h2>
@@ -140,9 +142,9 @@
           <span id="google-status" class="status-badge status-pending">Carregando</span>
         </div>
         <p id="google-account" hidden></p>
-        <p id="google-sync-status" class="notice" hidden></p>
-        <p id="google-error" class="error" hidden></p>
-        <p id="google-success" class="success" hidden></p>
+        <p id="google-sync-status" class="notice" role="status" aria-live="polite" hidden></p>
+        <p id="google-error" class="error" role="alert" hidden></p>
+        <p id="google-success" class="success" role="status" hidden></p>
         <div class="actions">
           <button id="google-connect" type="button" hidden>Conectar conta Google</button>
           <button id="google-sync" type="button" hidden>Sincronizar contatos</button>
@@ -173,8 +175,8 @@
           antigas que a retenção configurada acima, junto com seus destinatários, tentativas e
           mídias. Esta ação é explícita e não pode ser desfeita.
         </p>
-        <p id="cleanup-message" class="success" hidden></p>
-        <p id="cleanup-error" class="error" hidden></p>
+        <p id="cleanup-message" class="success" role="status" hidden></p>
+        <p id="cleanup-error" class="error" role="alert" hidden></p>
         <div class="actions">
           <button id="cleanup-button" class="danger" type="button">Executar limpeza agora</button>
         </div>
@@ -206,8 +208,8 @@
               required
             />
           </label>
-          <p id="restore-message" class="success" hidden></p>
-          <p id="restore-error" class="error" hidden></p>
+          <p id="restore-message" class="success" role="status" hidden></p>
+          <p id="restore-error" class="error" role="alert" hidden></p>
           <div class="actions">
             <button id="restore-button" class="danger" type="submit">Restaurar backup</button>
           </div>
