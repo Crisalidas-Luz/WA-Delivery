@@ -128,9 +128,12 @@ async function loadGoogleStatus() {
     googleSyncStatus.hidden = !state.connected;
     if (state.connected) {
       const latestAt = state.sync.lastIncrementalSyncAt || state.sync.lastFullSyncAt;
-      const details = latestAt
-        ? ` Última conclusão: ${new Date(`${latestAt}Z`).toLocaleString()}. ${state.sync.created} novo(s), ${state.sync.updated} atualizado(s), ${state.sync.deleted} removido(s).`
-        : '';
+      const details =
+        state.sync.status === 'running'
+          ? ` Progresso atual: ${state.sync.created} novo(s), ${state.sync.updated} atualizado(s), ${state.sync.deleted} removido(s).`
+          : latestAt
+            ? ` Última conclusão: ${new Date(`${latestAt}Z`).toLocaleString()}. ${state.sync.created} novo(s), ${state.sync.updated} atualizado(s), ${state.sync.deleted} removido(s).`
+            : '';
       const failure = state.sync.error ? ` ${state.sync.error.message}` : '';
       googleSyncStatus.textContent = `Sincronização: ${state.sync.status}${state.sync.type ? ` (${state.sync.type})` : ''}.${details}${failure}`;
       googleSync.disabled = state.sync.status === 'running';

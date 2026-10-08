@@ -170,6 +170,14 @@ export class GoogleContactsRepository {
         this.replacePhones(contactId, item.phones);
         this.replaceLabels(contactId, item.contact.labels);
       }
+      this.database
+        .prepare(
+          `UPDATE google_sync_state SET created_count = created_count + ?,
+            updated_count = updated_count + ?, deleted_count = deleted_count + ?,
+            updated_at = CURRENT_TIMESTAMP
+           WHERE account_id = 1 AND status = 'running'`,
+        )
+        .run(created, updated, deleted);
       this.database.exec('COMMIT');
       return { created, updated, deleted };
     } catch (error) {

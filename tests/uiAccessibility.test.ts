@@ -19,6 +19,7 @@ describe('feedback acessível para operações longas', () => {
       script,
       /googleCard\.setAttribute\('aria-busy', String\(state\.sync\.status === 'running'\)\)/,
     );
+    assert.match(script, /Progresso atual:/);
   });
 
   it('expõe progresso numérico da campanha a tecnologias assistivas', async () => {

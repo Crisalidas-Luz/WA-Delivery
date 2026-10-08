@@ -457,12 +457,22 @@ Compatibilidade, volume e matriz de exclusão:
 - exclusão Google agora tem cobertura explícita para recuperação após dois `429`, esgotamento de
   três tentativas em `5xx` e falha de rede, preservando códigos e mensagens seguras para retry.
 
+Progresso quantitativo da sincronização:
+
+- cada página aplicada incrementa os contadores persistidos de contatos criados, atualizados e
+  removidos dentro da mesma transação dos dados;
+- `/api/google/status` e `/api/google/sync/status` passam a refletir progresso parcial real enquanto
+  a operação está `running`, inclusive depois de reload;
+- a interface anuncia os contadores atuais a cada polling e mantém os totais finais ao concluir;
+- teste bloqueia propositalmente a segunda página e confirma que o primeiro contador já está
+  visível antes da sincronização terminar.
+
 ## Validações da última etapa
 
 - `npm.cmd run typecheck`: passou.
 - `npm.cmd run lint`: passou.
 - `npm.cmd run format`: passou e normalizou os arquivos alterados.
-- `npm.cmd test`: 199 testes passaram, 0 falharam.
+- `npm.cmd test`: 200 testes passaram, 0 falharam.
 - `npm.cmd run build`: passou.
 - `node --check public/settings.js` e `node --check public/campaign.js`: passaram.
 - `node --check public/monitor.js`: passou.

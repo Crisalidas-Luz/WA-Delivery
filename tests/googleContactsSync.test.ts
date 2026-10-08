@@ -148,6 +148,39 @@ describe('GoogleContactsSyncService', () => {
     }
   });
 
+  it('publica contadores parciais depois de cada página concluída', async () => {
+    const { database, repository, provider, service } = setup();
+    let releaseSecondPage: (() => void) | undefined;
+    provider.pages = [
+      { contacts: [contact('people/progress-1', '+55 16 99999-1111')], nextPageToken: 'page-2' },
+      { contacts: [contact('people/progress-2', '+55 16 99999-2222')], nextSyncToken: 'sync' },
+    ];
+    const listContacts = provider.listContacts.bind(provider);
+    provider.listContacts = async (tokens, input) => {
+      if (input.pageToken) {
+        await new Promise<void>((resolve) => {
+          releaseSecondPage = resolve;
+        });
+      }
+      return listContacts(tokens, input);
+    };
+    try {
+      const operation = service.sync(TOKENS);
+      for (let index = 0; index < 20 && repository.syncState()?.createdCount !== 1; index += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+      assert.equal(repository.syncState()?.status, 'running');
+      assert.equal(repository.syncState()?.createdCount, 1);
+      assert.equal(repository.syncState()?.updatedCount, 0);
+      releaseSecondPage?.();
+      assert.deepEqual(await operation, { created: 2, updated: 0, deleted: 0 });
+      assert.equal(repository.syncState()?.createdCount, 2);
+    } finally {
+      releaseSecondPage?.();
+      database.close();
+    }
+  });
+
   it('faz sincronização completa quando o sync token expira', async () => {
     const { database, repository, provider, service } = setup();
     try {
