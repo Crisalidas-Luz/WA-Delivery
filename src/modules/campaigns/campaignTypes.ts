@@ -56,6 +56,7 @@ export interface CampaignSummary {
   batchOrderSeed?: string;
   currentBatchNumber: number;
   nextBatchAt?: string;
+  batchWaitRemainingSeconds?: number;
   status: 'draft' | 'ready' | 'running' | 'paused' | 'completed' | 'cancelled' | 'failed';
   createdAt: string;
   updatedAt: string;

@@ -8,6 +8,12 @@ export interface QueueProgress {
   sent: number;
   failed: number;
   skipped: number;
+  batchSize: number;
+  totalBatches: number;
+  currentBatchNumber: number;
+  nextBatchAt?: string;
+  batchWaitRemainingSeconds?: number;
+  waitingForNextBatch: boolean;
 }
 
 export class QueueStateError extends Error {

@@ -99,6 +99,20 @@ describe('migrações do banco', () => {
           )
           .run(),
       );
+      database
+        .prepare('UPDATE campaigns SET batch_wait_remaining_seconds = 120 WHERE id = ?')
+        .run(campaignId);
+      assert.equal(
+        database
+          .prepare('SELECT batch_wait_remaining_seconds AS value FROM campaigns WHERE id = ?')
+          .get(campaignId)?.value,
+        120,
+      );
+      assert.throws(() =>
+        database
+          .prepare('UPDATE campaigns SET batch_wait_remaining_seconds = -1 WHERE id = ?')
+          .run(campaignId),
+      );
     } finally {
       database.close();
     }

@@ -36,6 +36,7 @@ interface CampaignRow {
   batch_order_seed: string | null;
   current_batch_number: number;
   next_batch_at: string | null;
+  batch_wait_remaining_seconds: number | null;
 }
 
 export interface DeletedDraft {
@@ -533,6 +534,7 @@ function baseQuery(where = ''): string {
       , campaigns.batch_order_seed
       , campaigns.current_batch_number
       , campaigns.next_batch_at
+      , campaigns.batch_wait_remaining_seconds
       , media.original_name AS media_original_name
       , media.mimetype AS media_mimetype
       , media.kind AS media_kind
@@ -581,6 +583,9 @@ function toSummary(row: CampaignRow): CampaignSummary {
     ...(row.batch_order_seed === null ? {} : { batchOrderSeed: row.batch_order_seed }),
     currentBatchNumber: row.current_batch_number,
     ...(row.next_batch_at === null ? {} : { nextBatchAt: row.next_batch_at }),
+    ...(row.batch_wait_remaining_seconds === null
+      ? {}
+      : { batchWaitRemainingSeconds: row.batch_wait_remaining_seconds }),
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

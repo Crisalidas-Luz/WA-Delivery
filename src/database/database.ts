@@ -348,6 +348,13 @@ const migrations = [
     disableForeignKeys: true,
     run: migrateCampaignFlowV11,
   },
+  {
+    version: 12,
+    sql: `
+      ALTER TABLE campaigns ADD COLUMN batch_wait_remaining_seconds INTEGER
+        CHECK (batch_wait_remaining_seconds IS NULL OR batch_wait_remaining_seconds >= 0);
+    `,
+  },
 ] as const;
 
 function migrateCampaignFlowV11(database: DatabaseSync): void {

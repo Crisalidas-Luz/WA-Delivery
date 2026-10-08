@@ -54,7 +54,14 @@ class QueueWhatsAppProvider implements WhatsAppProvider {
   }
 }
 
-function setup(contactCount = 1, operationTimeoutMs?: number, maxAttempts?: number, backoffMs = 0) {
+function setup(
+  contactCount = 1,
+  operationTimeoutMs?: number,
+  maxAttempts?: number,
+  backoffMs = 0,
+  batchSize = 100,
+  batchIntervalSeconds = 0,
+) {
   const database = openDatabase(':memory:');
   const contacts = new ContactService(new ContactRepository(database));
   const list = contacts.createManualList({
@@ -72,6 +79,8 @@ function setup(contactCount = 1, operationTimeoutMs?: number, maxAttempts?: numb
     messageTemplate: 'Olá {{nome}}!',
     delayMinSeconds: 1,
     delayMaxSeconds: 1,
+    batchSize,
+    batchIntervalSeconds,
   });
   campaigns.prepareDraft(draft.id, true);
   const provider = new QueueWhatsAppProvider();
@@ -119,6 +128,53 @@ describe('CampaignQueueWorker', () => {
       assert.equal(progress?.sent, 1);
       assert.equal(progress?.pending, 0);
       assert.equal(provider.sent.length, 1);
+    } finally {
+      worker.shutdown();
+      database.close();
+    }
+  });
+
+  it('persiste a espera entre lotes e congela a contagem durante pausa manual', async () => {
+    const { database, draft, provider, repository, worker } = setup(
+      2,
+      undefined,
+      undefined,
+      0,
+      1,
+      1,
+    );
+    try {
+      worker.start(draft.id, true);
+      await waitUntil(() => repository.progress(draft.id)?.waitingForNextBatch === true);
+      const waiting = repository.progress(draft.id);
+      assert.equal(waiting?.sent, 1);
+      assert.equal(waiting?.currentBatchNumber, 1);
+      assert.ok(waiting?.nextBatchAt);
+
+      worker.pause(draft.id);
+      const paused = repository.progress(draft.id);
+      assert.equal(paused?.status, 'paused');
+      assert.equal(paused?.nextBatchAt, undefined);
+      assert.ok((paused?.batchWaitRemainingSeconds ?? 0) > 0);
+      await new Promise((resolve) => setTimeout(resolve, 1_100));
+      assert.equal(provider.sent.length, 1);
+
+      worker.resume(draft.id);
+      await waitUntil(() => repository.progress(draft.id)?.status === 'completed');
+      assert.equal(provider.sent.length, 2);
+      assert.equal(repository.progress(draft.id)?.currentBatchNumber, 2);
+    } finally {
+      worker.shutdown();
+      database.close();
+    }
+  });
+
+  it('não aguarda intervalo de lote depois do último destinatário', async () => {
+    const { database, draft, repository, worker } = setup(1, undefined, undefined, 0, 1, 3_600);
+    try {
+      worker.start(draft.id, true);
+      await waitUntil(() => repository.progress(draft.id)?.status === 'completed');
+      assert.equal(repository.progress(draft.id)?.waitingForNextBatch, false);
     } finally {
       worker.shutdown();
       database.close();

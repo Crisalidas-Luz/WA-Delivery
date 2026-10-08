@@ -15,11 +15,17 @@ const factElapsed = document.querySelector('#fact-elapsed');
 const factRemaining = document.querySelector('#fact-remaining');
 const factTotal = document.querySelector('#fact-total');
 const factInterval = document.querySelector('#fact-interval');
+const factBatch = document.querySelector('#fact-batch');
+const factBatchWait = document.querySelector('#fact-batch-wait');
 const factSource = document.querySelector('#fact-source');
 
 const STATUS_LABELS = {
-  ready: 'Pronta para envio', running: 'Em execução', paused: 'Pausada',
-  completed: 'Concluída', cancelled: 'Cancelada', failed: 'Com falha',
+  ready: 'Pronta para envio',
+  running: 'Em execução',
+  paused: 'Pausada',
+  completed: 'Concluída',
+  cancelled: 'Cancelada',
+  failed: 'Com falha',
 };
 
 let campaign;
@@ -28,6 +34,7 @@ let elapsedTimer;
 // Últimos contadores conhecidos, para tocar um som por mensagem enviada/falhada.
 let lastSent;
 let lastFailed;
+let lastProgress;
 
 function showError(text = '') {
   errorPanel.hidden = !text;
@@ -52,18 +59,22 @@ function formatDuration(totalSeconds) {
 
 function formatDateTime(value) {
   if (!value) return '—';
-  // O banco grava em UTC ("YYYY-MM-DD HH:MM:SS"); interpreta como UTC.
-  const date = new Date(`${value.replace(' ', 'T')}Z`);
+  const date = parseStoredDate(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString('pt-BR');
+}
+
+function parseStoredDate(value) {
+  return new Date(/[zZ]|[+-]\d\d:\d\d$/.test(value) ? value : `${value.replace(' ', 'T')}Z`);
 }
 
 function startedAtMs() {
   if (!campaign?.startedAt) return undefined;
-  const date = new Date(`${campaign.startedAt.replace(' ', 'T')}Z`);
+  const date = parseStoredDate(campaign.startedAt);
   return Number.isNaN(date.getTime()) ? undefined : date.getTime();
 }
 
 function renderProgress(progress) {
+  lastProgress = progress;
   const done = progress.sent + progress.failed + progress.skipped;
   const percent = progress.total > 0 ? Math.round((done / progress.total) * 100) : 0;
   barFill.style.width = `${percent}%`;
@@ -71,8 +82,11 @@ function renderProgress(progress) {
 
   metricsEl.replaceChildren();
   for (const [label, value] of [
-    ['Total', progress.total], ['Pendentes', progress.pending], ['Enviados', progress.sent],
-    ['Falhas', progress.failed], ['Ignorados', progress.skipped],
+    ['Total', progress.total],
+    ['Pendentes', progress.pending],
+    ['Enviados', progress.sent],
+    ['Falhas', progress.failed],
+    ['Ignorados', progress.skipped],
   ]) {
     const metric = document.createElement('div');
     metric.className = 'metric';
@@ -84,6 +98,9 @@ function renderProgress(progress) {
     metricsEl.append(metric);
   }
   statusEl.textContent = `Status: ${STATUS_LABELS[progress.status] || progress.status}.`;
+  factBatch.textContent =
+    progress.totalBatches > 0 ? `${progress.currentBatchNumber} de ${progress.totalBatches}` : '—';
+  renderBatchWait(progress);
 
   // Estimativa de tempo restante: considera cada pendente (incluindo o envio em
   // andamento) e adiciona uma folga de retentativas proporcional à taxa de
@@ -98,15 +115,29 @@ function renderProgress(progress) {
     // intervalo extra proporcional à taxa de falhas observada.
     const baseSeconds = pending * avgInterval;
     const retrySeconds = pending * failureRate * avgInterval;
-    factRemaining.textContent = progress.status === 'running'
-      ? formatDuration(baseSeconds + retrySeconds)
-      : '—';
+    factRemaining.textContent =
+      progress.status === 'running' ? formatDuration(baseSeconds + retrySeconds) : '—';
   }
+}
+
+function renderBatchWait(progress) {
+  if (!progress?.waitingForNextBatch) {
+    factBatchWait.textContent = '—';
+    return;
+  }
+  const remaining = progress.nextBatchAt
+    ? Math.max(0, Math.ceil((parseStoredDate(progress.nextBatchAt).getTime() - Date.now()) / 1000))
+    : progress.batchWaitRemainingSeconds;
+  factBatchWait.textContent =
+    progress.status === 'paused'
+      ? `${formatDuration(remaining)} restantes (pausado)`
+      : `em ${formatDuration(remaining)}`;
 }
 
 function updateElapsed() {
   const startMs = startedAtMs();
   factElapsed.textContent = startMs ? formatDuration((Date.now() - startMs) / 1000) : '—';
+  renderBatchWait(lastProgress);
 }
 
 function renderCampaign(active, progress) {
@@ -141,7 +172,10 @@ function showEmpty() {
   lastFailed = undefined;
   activePanel.hidden = true;
   emptyPanel.hidden = false;
-  if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = undefined; }
+  if (elapsedTimer) {
+    clearInterval(elapsedTimer);
+    elapsedTimer = undefined;
+  }
 }
 
 function handleStatusTransition(status, progress) {
@@ -165,14 +199,16 @@ function handleMessageSounds(progress) {
 async function findActive() {
   const { items } = await request('/api/campaigns');
   // Campanha ativa: em execução ou pausada (prioriza a em execução).
-  return items.find((c) => c.status === 'running')
-    ?? items.find((c) => c.status === 'paused');
+  return items.find((c) => c.status === 'running') ?? items.find((c) => c.status === 'paused');
 }
 
 async function load() {
   try {
     const active = await findActive();
-    if (!active) { showEmpty(); return; }
+    if (!active) {
+      showEmpty();
+      return;
+    }
     const progress = await request(`/api/campaigns/${active.id}/progress`);
     lastStatus = progress.status;
     // Ancorar os contadores no estado atual evita tocar um som para cada

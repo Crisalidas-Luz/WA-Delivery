@@ -59,6 +59,7 @@ export class CampaignQueueWorker {
     retryBackoffMs: number = DEFAULT_RETRY_BACKOFF_MS,
     retryBackoffCapMs: number = DEFAULT_RETRY_BACKOFF_CAP_MS,
     settings?: SettingsService,
+    private readonly now: () => number = Date.now,
   ) {
     this.fallbackOperationTimeoutMs = operationTimeoutMs;
     this.fallbackMaxAttempts = Math.max(1, maxAttempts);
@@ -111,6 +112,7 @@ export class CampaignQueueWorker {
 
   /** Pausa a campanha por queda de conexão, marcando-a para auto-retomada. */
   private pauseForDisconnect(campaignId: number): void {
+    this.repository.freezeBatchWait(campaignId, this.now());
     if (this.repository.setStatus(campaignId, 'running', 'paused')) {
       this.autoPausedCampaigns.add(campaignId);
       this.interruptDelay();
@@ -145,6 +147,7 @@ export class CampaignQueueWorker {
   }
 
   public pause(campaignId: number): QueueProgress {
+    this.repository.freezeBatchWait(campaignId, this.now());
     if (!this.repository.setStatus(campaignId, 'running', 'paused')) {
       throw new QueueStateError('A campanha não está em execução.');
     }
@@ -164,6 +167,7 @@ export class CampaignQueueWorker {
         'A campanha não está pausada ou já existe outra campanha em execução.',
       );
     }
+    this.repository.restoreBatchWait(campaignId, this.now());
     this.autoPausedCampaigns.delete(campaignId);
     this.run(campaignId);
     return this.requireProgress(campaignId);
@@ -196,6 +200,7 @@ export class CampaignQueueWorker {
   public shutdown(): void {
     this.unsubscribeConnection();
     if (this.activeCampaignId !== undefined) {
+      this.repository.freezeBatchWait(this.activeCampaignId, this.now());
       this.repository.setStatus(this.activeCampaignId, 'running', 'paused');
     }
     this.interruptDelay();
@@ -221,6 +226,13 @@ export class CampaignQueueWorker {
         this.repository.setStatus(campaignId, 'running', 'completed');
         this.emit(campaignId);
         return;
+      }
+      const campaignBeforeSend = this.campaigns.findById(campaignId);
+      if (!campaignBeforeSend) throw new Error('Campanha não encontrada durante a execução.');
+      if (recipient.batchNumber > campaignBeforeSend.currentBatchNumber) {
+        await this.waitForNextBatch(campaignBeforeSend, recipient.batchNumber);
+        if (this.repository.progress(campaignId)?.status !== 'running') return;
+        continue;
       }
 
       const attemptId = this.repository.markSending(recipient);
@@ -300,12 +312,40 @@ export class CampaignQueueWorker {
       if (backoffMs > 0) {
         // Backoff antes de reprocessar o destinatário que falhou de forma transitória.
         await this.wait(backoffMs);
-      } else if (this.repository.findNext(campaignId)) {
+      } else {
+        const nextRecipient = this.repository.findNext(campaignId);
+        if (!nextRecipient || nextRecipient.batchNumber !== recipient.batchNumber) continue;
         const range = campaign.delayMaxSeconds - campaign.delayMinSeconds;
         const delaySeconds = campaign.delayMinSeconds + Math.floor(this.random() * (range + 1));
         await this.wait(delaySeconds * 1_000);
       }
     }
+  }
+
+  private async waitForNextBatch(
+    campaign: NonNullable<ReturnType<CampaignService['findById']>>,
+    nextBatchNumber: number,
+  ): Promise<void> {
+    if (campaign.batchIntervalSeconds <= 0) {
+      this.repository.beginBatch(campaign.id, nextBatchNumber);
+      this.emit(campaign.id);
+      return;
+    }
+    let nextBatchAt = campaign.nextBatchAt;
+    if (!nextBatchAt) {
+      nextBatchAt = new Date(this.now() + campaign.batchIntervalSeconds * 1_000).toISOString();
+      this.repository.scheduleNextBatch(campaign.id, campaign.currentBatchNumber, nextBatchAt);
+      this.emit(campaign.id);
+    }
+    while (this.repository.progress(campaign.id)?.status === 'running') {
+      const remainingMs = Date.parse(nextBatchAt) - this.now();
+      if (remainingMs <= 0) break;
+      await this.wait(Math.min(remainingMs, 1_000));
+      this.emit(campaign.id);
+    }
+    if (this.repository.progress(campaign.id)?.status !== 'running') return;
+    this.repository.beginBatch(campaign.id, nextBatchNumber);
+    this.emit(campaign.id);
   }
 
   private async sendMedia(mediaId: number, phone: string, caption: string) {

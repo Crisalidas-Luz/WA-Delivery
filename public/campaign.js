@@ -184,6 +184,10 @@ function renderProgress(progress) {
     ['Enviados', progress.sent],
     ['Falhas', progress.failed],
     ['Ignorados', progress.skipped],
+    [
+      'Lote',
+      progress.totalBatches > 0 ? `${progress.currentBatchNumber}/${progress.totalBatches}` : '—',
+    ],
   ]) {
     const metric = document.createElement('div');
     metric.className = 'metric';
@@ -205,10 +209,20 @@ function renderProgress(progress) {
   resumeCampaign.hidden = progress.status !== 'paused';
   cancelCampaign.hidden = !['ready', 'running', 'paused'].includes(progress.status);
   if (executionNotice) {
-    executionNotice.hidden = !running;
-    executionNotice.textContent = running
-      ? 'Campanha em execução. Os envios estão sendo processados.'
-      : '';
+    executionNotice.hidden = !running && !progress.waitingForNextBatch;
+    if (progress.waitingForNextBatch) {
+      const remaining = progress.nextBatchAt
+        ? Math.max(0, Math.ceil((new Date(progress.nextBatchAt).getTime() - Date.now()) / 1000))
+        : progress.batchWaitRemainingSeconds;
+      executionNotice.textContent =
+        progress.status === 'paused'
+          ? `Espera entre lotes pausada com ${remaining ?? 0}s restantes.`
+          : `Aguardando o próximo lote: aproximadamente ${remaining ?? 0}s.`;
+    } else {
+      executionNotice.textContent = running
+        ? 'Campanha em execução. Os envios estão sendo processados.'
+        : '';
+    }
   }
   // Reenvio dos pendentes só a partir de uma campanha finalizada.
   if (followUpZone) {

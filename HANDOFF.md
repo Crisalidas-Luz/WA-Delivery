@@ -163,12 +163,28 @@ Integração do compositor e da revisão de campanha:
   inelegíveis;
 - CSV/manual continuam disponíveis no mesmo compositor e recebem os mesmos controles de lote.
 
+Execução persistente em lotes (migration v12):
+
+- worker processa `batch_number`/`position_in_batch` e aplica o intervalo somente entre lotes;
+- `next_batch_at`, lote atual e segundos restantes congelados são persistidos no banco;
+- pausa manual e encerramento limpo congelam a contagem; retomada recalcula o horário sem reiniciar
+  o intervalo completo;
+- recuperação após interrupção continua convertendo campanhas em execução para `paused`, sem
+  disparo silencioso; o usuário precisa retomar explicitamente;
+- intervalo vencido durante interrupção permite iniciar o próximo lote imediatamente após a
+  confirmação de retomada;
+- nenhum intervalo é aplicado depois do último lote e estados terminais limpam a espera;
+- SSE emite progresso durante a contagem regressiva; revisão e monitoramento mostram lote atual,
+  total de lotes e tempo até o próximo;
+- testes cobrem persistência da espera, congelamento durante pausa, retomada e ausência de espera
+  após o último destinatário.
+
 ## Validações da última etapa
 
 - `npm.cmd run typecheck`: passou.
 - `npm.cmd run lint`: passou.
 - `npm.cmd run format`: passou e normalizou os arquivos alterados.
-- `npm.cmd test`: 164 testes passaram, 0 falharam.
+- `npm.cmd test`: 166 testes passaram, 0 falharam.
 - `npm.cmd run build`: passou.
 - `node --check public/contacts.js`: passou.
 - Observação do ambiente: dentro do sandbox, o loader `tsx` falhou em `uv_os_get_passwd` com
@@ -178,8 +194,8 @@ Integração do compositor e da revisão de campanha:
 
 ## Próximo passo
 
-1. Implementar execução persistente e espera retomável entre lotes.
-2. Emitir progresso/contagem regressiva de lote por SSE e exibir na revisão/monitoramento.
+1. Estruturar o manifesto pós-campanha e códigos/motivos de cada tentativa/resultado.
+2. Implementar revisão e jobs auditáveis de exclusão Google.
 3. Evoluir o editor visual para grupos `E`/`OU` aninhados sem perder ASTs já salvas.
 
 ## Decisões e cuidados ativos
