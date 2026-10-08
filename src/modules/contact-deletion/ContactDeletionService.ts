@@ -20,6 +20,7 @@ export interface CreateContactDeletionJobInput {
 }
 
 const TERMINAL_CAMPAIGN_STATES = new Set(['completed', 'cancelled', 'failed']);
+const MAX_DELETION_ITEMS = 10_000;
 const ALLOWED_REASONS = new Set<ContactDeletionItem['reasonCode']>([
   'missing_phone',
   'invalid_phone',
@@ -75,6 +76,11 @@ export class ContactDeletionService {
       );
     }
     const ids = [...new Set(input.recipientIds ?? [])];
+    if (ids.length > MAX_DELETION_ITEMS) {
+      throw new ContactDeletionValidationError(
+        `Cada job de exclusão aceita no máximo ${MAX_DELETION_ITEMS.toLocaleString('pt-BR')} contatos.`,
+      );
+    }
     if (ids.length === 0 || ids.some((id) => !Number.isSafeInteger(id) || id <= 0)) {
       throw new ContactDeletionValidationError('Selecione ao menos um destinatário válido.');
     }

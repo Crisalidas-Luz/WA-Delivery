@@ -176,6 +176,18 @@ function setup(input: {
 }
 
 describe('ContactDeletionService', () => {
+  it('recusa jobs acima do limite de seleção antes de consultar a campanha', () => {
+    const { service } = setup({ reason: 'invalid_phone', phones: ['123'] });
+    assert.throws(
+      () =>
+        service.createAndStart(1, {
+          confirmed: true,
+          recipientIds: Array.from({ length: 10_001 }, (_, index) => index + 1),
+        }),
+      /no máximo 10\.000 contatos/,
+    );
+  });
+
   it('exclui sequencialmente e confirma por sincronização uma evidência ainda válida', async () => {
     const { service, campaignId, recipientId } = setup({
       reason: 'invalid_phone',

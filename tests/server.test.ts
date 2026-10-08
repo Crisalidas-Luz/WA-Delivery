@@ -7,7 +7,7 @@ import type {
   MediaMessage,
   WhatsAppProvider,
 } from '../src/providers/whatsapp/WhatsAppProvider.js';
-import { buildServer } from '../src/web/server.js';
+import { buildServer, MAX_JSON_BODY_BYTES } from '../src/web/server.js';
 import { openDatabase } from '../src/database/database.js';
 import { SettingsRepository } from '../src/modules/settings/SettingsRepository.js';
 import { SettingsService } from '../src/modules/settings/SettingsService.js';
@@ -88,6 +88,23 @@ describe('servidor local', () => {
     const response = await server.inject({ method: 'GET', url: '/api/health' });
     assert.equal(response.statusCode, 200);
     assert.deepEqual(response.json(), { status: 'ok' });
+    await server.close();
+  });
+
+  it('recusa payload JSON acima do limite global com resposta segura', async () => {
+    const server = await createServer();
+    const response = await server.inject({
+      method: 'PUT',
+      url: '/api/settings',
+      headers: { 'content-type': 'application/json' },
+      payload: JSON.stringify({ extra: 'x'.repeat(MAX_JSON_BODY_BYTES) }),
+    });
+
+    assert.equal(response.statusCode, 413);
+    assert.deepEqual(response.json(), {
+      message: 'O corpo da requisição excede o limite de 1024 KiB.',
+    });
+    assert.doesNotMatch(response.body, /stack|FastifyError/i);
     await server.close();
   });
 

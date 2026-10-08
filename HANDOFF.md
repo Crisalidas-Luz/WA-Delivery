@@ -426,22 +426,32 @@ Acessibilidade de operações longas:
   as atualizações persistidas;
 - testes estáticos protegem os contratos de acessibilidade das três operações longas.
 
+Endurecimento de dependências e payloads:
+
+- overrides compatíveis atualizam `sharp` para 0.35.5 e `music-metadata` para 11.16.0, removendo as
+  vulnerabilidades transitivas conhecidas sem trocar a versão do Baileys;
+- `npm ci` volta a concluir de forma reproduzível e `npm audit` reporta zero vulnerabilidades;
+- payloads JSON possuem limite global explícito de 1 MiB e respostas 413 seguras, sem stack trace;
+- jobs de exclusão aceitam no máximo 10.000 destinatários, alinhados ao limite da seleção;
+- testes cobrem tanto o limite HTTP quanto a recusa antecipada de jobs excessivos.
+
 ## Validações da última etapa
 
 - `npm.cmd run typecheck`: passou.
 - `npm.cmd run lint`: passou.
 - `npm.cmd run format`: passou e normalizou os arquivos alterados.
-- `npm.cmd test`: 192 testes passaram, 0 falharam.
+- `npm.cmd test`: 194 testes passaram, 0 falharam.
 - `npm.cmd run build`: passou.
 - `node --check public/settings.js` e `node --check public/campaign.js`: passaram.
 - `node --check public/monitor.js`: passou.
 - `git diff --check`: passou.
+- `npm.cmd run test:coverage`: passou com 92,88% de linhas, 76,84% de branches e 89,79% de funções.
+- `npm.cmd ci`: passou.
+- `npm.cmd audit --audit-level=moderate`: zero vulnerabilidades.
 - QA visual automatizado não pôde ser executado nesta sessão: o controle de interface não encontrou
   navegador ou janela disponível (`apps: []`, `browsers: []`).
 - Observação do ambiente: dentro do sandbox, o loader `tsx` falhou em `uv_os_get_passwd` com
   `ENOMEM`; a mesma suíte executada fora do sandbox passou integralmente.
-- `npm ci` reportou uma vulnerabilidade de severidade alta em dependência; ainda precisa ser
-  analisada sem aplicar atualização automática incompatível.
 
 ## Próximo passo
 

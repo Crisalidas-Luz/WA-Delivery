@@ -26,6 +26,8 @@ import { registerContactSelectionRoutes } from './contactSelectionRoutes.js';
 import type { ContactDeletionService } from '../modules/contact-deletion/ContactDeletionService.js';
 import { registerContactDeletionRoutes } from './contactDeletionRoutes.js';
 
+export const MAX_JSON_BODY_BYTES = 1024 * 1024;
+
 export interface ServerDependencies {
   whatsappProvider: WhatsAppProvider;
   settings: SettingsService;
@@ -42,7 +44,7 @@ export interface ServerDependencies {
 }
 
 export async function buildServer(dependencies: ServerDependencies): Promise<FastifyInstance> {
-  const server = Fastify({ logger: false });
+  const server = Fastify({ logger: false, bodyLimit: MAX_JSON_BODY_BYTES });
   const { whatsappProvider, settings, contacts, csvImports, campaigns, media, queue, backup } =
     dependencies;
 
@@ -117,6 +119,11 @@ export async function buildServer(dependencies: ServerDependencies): Promise<Fas
   // mensagem genérica e o detalhe (mascarado) vai apenas para os logs.
   server.setErrorHandler((error: Error & { statusCode?: number }, _request, reply) => {
     const status = typeof error.statusCode === 'number' ? error.statusCode : 500;
+    if (status === 413) {
+      return reply.code(413).send({
+        message: `O corpo da requisição excede o limite de ${MAX_JSON_BODY_BYTES / 1024} KiB.`,
+      });
+    }
     if (status >= 500) {
       logger.error(
         { err: maskSensitive(error.message) },
