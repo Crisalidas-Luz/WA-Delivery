@@ -27,6 +27,8 @@ const panelGoogle = document.querySelector('#panel-google');
 const panelImport = document.querySelector('#panel-import');
 const panelManual = document.querySelector('#panel-manual');
 let googleLoaded = false;
+const editCampaignId = Number(new URLSearchParams(location.search).get('campaign'));
+let editingCampaign;
 
 function selectTab(target) {
   const showGoogle = target === 'google';
@@ -239,21 +241,41 @@ function renderFilter(definition) {
 
 async function initializeGoogleContacts() {
   googleLoaded = true;
-  renderFilter({
+  let initialFilter = {
     version: 1,
     root: {
       type: 'group',
       combinator: 'and',
       children: [{ type: 'rule', field: 'displayName', operator: 'isNotEmpty' }],
     },
-  });
+  };
   try {
+    if (Number.isSafeInteger(editCampaignId) && editCampaignId > 0) {
+      const response = await fetch(`/api/campaigns/${editCampaignId}`);
+      const campaign = await response.json();
+      if (!response.ok) throw new Error(campaign.message ?? 'Rascunho não encontrado.');
+      if (campaign.status !== 'draft' || campaign.selectionSource !== 'google') {
+        throw new Error('Somente rascunhos Google podem ter a seleção editada.');
+      }
+      editingCampaign = campaign;
+      const selection = campaign.contactSelection;
+      if (!selection?.filter) throw new Error('O rascunho não possui uma seleção Google válida.');
+      initialFilter = selection.filter;
+      selectAllMatching.checked = selection.selectAllMatching === true;
+      for (const id of selection.includedIds ?? []) includedContactIds.add(id);
+      for (const id of selection.excludedIds ?? []) excludedContactIds.add(id);
+      for (const [contactId, phoneId] of Object.entries(selection.phoneChoices ?? {})) {
+        phoneChoices.set(Number(contactId), Number(phoneId));
+      }
+      document.querySelector('#use-contact-selection').textContent = 'Salvar seleção no rascunho';
+    }
+    renderFilter(initialFilter);
     const [statusResponse] = await Promise.all([fetch('/api/google/status'), loadSavedFilters()]);
     const status = await statusResponse.json();
     googleStatus.textContent = status.connected
       ? `Conta ${status.account?.email ?? 'Google'} conectada. Os resultados usam a última sincronização local.`
       : 'Google não conectado. Você ainda pode revisar dados já sincronizados ou configurar a conta.';
-    await runContactSearch(true);
+    await runContactSearch(!editingCampaign);
   } catch (error) {
     showGoogleError(`Não foi possível carregar a agenda: ${error.message}`);
   }
@@ -447,6 +469,36 @@ document.querySelector('#use-contact-selection').addEventListener('click', async
   try {
     const resolved = await refreshSelectionSummary();
     if (resolved.summary.selected === 0) throw new Error('Selecione ao menos um contato.');
+    if (editingCampaign) {
+      const response = await fetch(`/api/campaigns/${editingCampaign.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editingCampaign.name,
+          contactSelection: resolved.definition,
+          messageTemplate: editingCampaign.messageTemplate,
+          delayMinSeconds: editingCampaign.delayMinSeconds,
+          delayMaxSeconds: editingCampaign.delayMaxSeconds,
+          batchSize: editingCampaign.batchSize,
+          batchIntervalSeconds: editingCampaign.batchIntervalSeconds,
+          batchOrder: editingCampaign.batchOrder,
+          ...(editingCampaign.batchOrderSeed
+            ? { batchOrderSeed: editingCampaign.batchOrderSeed }
+            : {}),
+          mediaId: editingCampaign.media?.id ?? null,
+        }),
+      });
+      const updated = await response.json();
+      if (!response.ok) {
+        throw new Error(
+          updated.issues?.map((issue) => issue.message).join(' ') ||
+            updated.message ||
+            'Não foi possível atualizar a seleção.',
+        );
+      }
+      window.location.href = `/campaign.html?id=${editingCampaign.id}`;
+      return;
+    }
     sessionStorage.setItem('waDeliveryContactSelection', JSON.stringify(resolved));
     window.location.href = '/campaigns.html?source=google';
   } catch (error) {

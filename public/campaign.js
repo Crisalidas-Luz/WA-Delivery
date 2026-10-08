@@ -10,6 +10,7 @@ const contactListLabel = document.querySelector('#campaign-list-label');
 const followUpSelectionNote = document.querySelector('#follow-up-selection-note');
 const googleSelectionPanel = document.querySelector('#campaign-google-selection');
 const googleSelectionSummary = document.querySelector('#campaign-google-selection-summary');
+const editGoogleSelection = document.querySelector('#edit-google-selection');
 const messageTemplate = document.querySelector('#message-template');
 const messageCounter = document.querySelector('#message-counter');
 const delayMin = document.querySelector('#delay-min');
@@ -490,6 +491,7 @@ async function load() {
   if (usesGoogle) {
     const summary = campaign.selectionSummary ?? {};
     googleSelectionSummary.textContent = `${summary.selected ?? 0} selecionados; ${summary.eligible ?? 0} elegíveis; ${summary.ambiguousPhone ?? 0} com telefone a escolher. Os filtros, escolhas e exceções estão salvos no rascunho.`;
+    editGoogleSelection.href = `/contacts.html?campaign=${campaign.id}`;
   }
   messageTemplate.value = campaign.messageTemplate;
   messageCounter.textContent = `${campaign.messageTemplate.length} / 4096`;

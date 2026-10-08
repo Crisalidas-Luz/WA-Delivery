@@ -160,6 +160,41 @@ describe('CampaignService', () => {
     }
   });
 
+  it('atualiza a seleção Google no mesmo rascunho e recalcula sua resolução', async () => {
+    const { database, campaigns } = setupGoogleCampaigns();
+    try {
+      const ana = database
+        .prepare("SELECT id FROM google_contacts WHERE resource_name = 'people/ana'")
+        .get() as { id: number };
+      const draft = campaigns.createDraft({
+        name: 'Seleção editável',
+        contactSelection: allGoogleContacts,
+        messageTemplate: 'Olá {{nome}}!',
+        delayMinSeconds: 1,
+        delayMaxSeconds: 1,
+      });
+      const updated = await campaigns.updateDraft(draft.id, {
+        name: draft.name,
+        contactSelection: {
+          ...allGoogleContacts,
+          selectAllMatching: false,
+          includedIds: [ana.id],
+        },
+        messageTemplate: draft.messageTemplate,
+        delayMinSeconds: draft.delayMinSeconds,
+        delayMaxSeconds: draft.delayMaxSeconds,
+        batchSize: draft.batchSize,
+        batchIntervalSeconds: draft.batchIntervalSeconds,
+        batchOrder: draft.batchOrder,
+      });
+      assert.equal(updated?.id, draft.id);
+      assert.deepEqual(updated?.selectionResolvedIds, [ana.id]);
+      assert.equal(updated?.selectionSummary?.selected, 1);
+    } finally {
+      database.close();
+    }
+  });
+
   it('renderiza e congela variáveis sincronizadas do Google no snapshot', () => {
     const { database, campaigns } = setupGoogleCampaigns();
     try {

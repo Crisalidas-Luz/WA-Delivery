@@ -311,12 +311,23 @@ Leitura e filtragem do manifesto:
 - filtro, texto pesquisado e ordenação passam a integrar o snapshot de revisão gravado no job de
   exclusão; a busca não pré-seleciona contatos nem amplia a política de exclusão segura.
 
+Edição da seleção de um rascunho Google:
+
+- a campanha em rascunho agora abre a agenda com seu próprio ID para editar a seleção existente;
+- o editor restaura AST do filtro, modo “selecionar todos”, inclusões/exclusões individuais e
+  escolhas de telefone previamente salvas;
+- ao confirmar, a seleção é revalidada e atualizada via `PUT` na mesma campanha, preservando nome,
+  mensagem, mídia, intervalos, lotes e seed de ordenação;
+- campanhas já preparadas e campanhas locais não podem entrar por esse caminho;
+- teste de domínio confirma que o ID do rascunho é preservado e que IDs/resumo resolvidos são
+  recalculados.
+
 ## Validações da última etapa
 
 - `npm.cmd run typecheck`: passou.
 - `npm.cmd run lint`: passou.
 - `npm.cmd run format`: passou e normalizou os arquivos alterados.
-- `npm.cmd test`: 180 testes passaram, 0 falharam.
+- `npm.cmd test`: 181 testes passaram, 0 falharam.
 - `npm.cmd run build`: passou.
 - `node --check public/settings.js` e `node --check public/campaign.js`: passaram.
 - Observação do ambiente: dentro do sandbox, o loader `tsx` falhou em `uv_os_get_passwd` com
@@ -326,9 +337,9 @@ Leitura e filtragem do manifesto:
 
 ## Próximo passo
 
-1. Permitir editar a seleção Google de um rascunho existente sem criar outra campanha.
-2. Auditar estados `already_missing` em corridas de exclusão e feedback de retomada da fila.
-3. Revisar acessibilidade/progresso de operações longas e a cobertura do fluxo visual.
+1. Auditar estados `already_missing` em corridas de exclusão e feedback de retomada da fila.
+2. Revisar acessibilidade/progresso de operações longas e a cobertura do fluxo visual.
+3. Revisar o tratamento de erro ao excluir campanhas bloqueadas por auditoria incompleta.
 4. Executar QA real de OAuth, sincronização, envio e exclusão com contas de teste antes do merge.
 
 ## Decisões e cuidados ativos
