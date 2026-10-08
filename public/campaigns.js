@@ -1,10 +1,18 @@
 const form = document.querySelector('#campaign-form');
 const campaignName = document.querySelector('#campaign-name');
 const contactList = document.querySelector('#campaign-list');
+const recipientSource = document.querySelector('#recipient-source');
+const localListSource = document.querySelector('#local-list-source');
+const googleSelectionSource = document.querySelector('#google-selection-source');
+const googleSelectionDescription = document.querySelector('#google-selection-description');
 const messageTemplate = document.querySelector('#message-template');
 const messageCounter = document.querySelector('#message-counter');
 const delayMin = document.querySelector('#delay-min');
 const delayMax = document.querySelector('#delay-max');
+const batchSize = document.querySelector('#batch-size');
+const batchIntervalHours = document.querySelector('#batch-interval-hours');
+const batchIntervalMinutes = document.querySelector('#batch-interval-minutes');
+const batchOrder = document.querySelector('#batch-order');
 const insertName = document.querySelector('#insert-name');
 const variablesHint = document.querySelector('#variables-hint');
 const mediaInput = document.querySelector('#campaign-media');
@@ -25,6 +33,7 @@ const listsSection = document.querySelector('.lists-section');
 let lastSimulationInput;
 let uploadedMedia;
 let hasCampaigns = false;
+let googleSelection = readStoredGoogleSelection();
 
 // Exibe o formulário de nova campanha acima da lista, para o usuário não
 // precisar rolar toda a lista até chegar ao formulário.
@@ -54,6 +63,9 @@ function resetComposer() {
   simulationPanel.hidden = true;
   saveDraft.hidden = true;
   messageCounter.textContent = '0 / 4096';
+  googleSelection = readStoredGoogleSelection();
+  recipientSource.value = googleSelection ? 'google' : 'local_list';
+  renderRecipientSource();
 }
 
 function escapeHtml(value) {
@@ -71,18 +83,29 @@ async function request(path, options = {}) {
   const response = await fetch(path, options);
   const body = await response.json();
   if (!response.ok) {
-    throw new Error(body.issues?.map((issue) => issue.message).join(' ') || body.message || 'Falha na solicitação.');
+    throw new Error(
+      body.issues?.map((issue) => issue.message).join(' ') ||
+        body.message ||
+        'Falha na solicitação.',
+    );
   }
   return body;
 }
 
 function readInput() {
+  const usesGoogle = recipientSource.value === 'google';
   return {
     name: campaignName.value,
-    contactListId: Number(contactList.value),
+    ...(usesGoogle
+      ? { contactSelection: googleSelection?.definition }
+      : { contactListId: Number(contactList.value) }),
     messageTemplate: messageTemplate.value,
     delayMinSeconds: Number(delayMin.value),
     delayMaxSeconds: Number(delayMax.value),
+    batchSize: Number(batchSize.value),
+    batchIntervalSeconds:
+      Number(batchIntervalHours.value) * 3600 + Number(batchIntervalMinutes.value) * 60,
+    batchOrder: batchOrder.value,
     ...(uploadedMedia ? { mediaId: uploadedMedia.id } : {}),
   };
 }
@@ -106,7 +129,9 @@ function formatDuration(totalSeconds) {
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
-  return [hours && `${hours}h`, minutes && `${minutes}min`, `${seconds}s`].filter(Boolean).join(' ');
+  return [hours && `${hours}h`, minutes && `${minutes}min`, `${seconds}s`]
+    .filter(Boolean)
+    .join(' ');
 }
 
 function renderSimulation(simulation) {
@@ -116,23 +141,39 @@ function renderSimulation(simulation) {
     ['Intervalo mínimo', `${simulation.delayMinSeconds}s`],
     ['Intervalo médio', `${(simulation.delayMinSeconds + simulation.delayMaxSeconds) / 2}s`],
     ['Intervalo máximo', `${simulation.delayMaxSeconds}s`],
-  ].map(([label, value]) => `<div class="metric"><span>${label}</span><strong>${value}</strong></div>`).join('');
-  durationSummary.textContent = `Duração estimada: entre ${formatDuration(simulation.durationMinSeconds)} e ${formatDuration(simulation.durationMaxSeconds)}; média de ${formatDuration(simulation.durationAverageSeconds)}.`;
-  messageSamples.innerHTML = simulation.samples.map((sample) => `
+    ['Lotes', simulation.batchCount],
+    ['Por lote', simulation.batchSize],
+  ]
+    .map(
+      ([label, value]) =>
+        `<div class="metric"><span>${label}</span><strong>${value}</strong></div>`,
+    )
+    .join('');
+  durationSummary.textContent = `Duração estimada: entre ${formatDuration(simulation.durationMinSeconds)} e ${formatDuration(simulation.durationMaxSeconds)}; média de ${formatDuration(simulation.durationAverageSeconds)}. Espera entre lotes: ${formatDuration(simulation.batchIntervalSeconds)}.`;
+  messageSamples.innerHTML = simulation.samples
+    .map(
+      (sample) => `
     <article class="message-sample">
       <div><strong>${escapeHtml(sample.name)}</strong><span>${escapeHtml(sample.phone)}</span></div>
       <p>${escapeHtml(sample.message)}</p>
     </article>
-  `).join('');
+  `,
+    )
+    .join('');
   simulationPanel.hidden = false;
   saveDraft.hidden = false;
 }
 
 async function loadLists() {
   const { items } = await request('/api/contact-lists');
-  contactList.innerHTML = '<option value="">Selecione uma lista</option>' + items.map((item) =>
-    `<option value="${item.id}">${escapeHtml(item.name)} (${item.contactCount})</option>`
-  ).join('');
+  contactList.innerHTML =
+    '<option value="">Selecione uma lista</option>' +
+    items
+      .map(
+        (item) =>
+          `<option value="${item.id}">${escapeHtml(item.name)} (${item.contactCount})</option>`,
+      )
+      .join('');
 }
 
 // Ao selecionar uma lista, mostra as variáveis de template disponíveis
@@ -158,6 +199,36 @@ async function updateVariablesHint() {
 }
 
 contactList.addEventListener('change', () => void updateVariablesHint());
+recipientSource.addEventListener('change', () => {
+  renderRecipientSource();
+  form.dispatchEvent(new Event('input', { bubbles: true }));
+});
+
+function readStoredGoogleSelection() {
+  try {
+    const value = sessionStorage.getItem('waDeliveryContactSelection');
+    if (!value) return undefined;
+    const parsed = JSON.parse(value);
+    return parsed?.definition && parsed?.summary ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function renderRecipientSource() {
+  const usesGoogle = recipientSource.value === 'google';
+  localListSource.hidden = usesGoogle;
+  googleSelectionSource.hidden = !usesGoogle;
+  if (!usesGoogle) {
+    void updateVariablesHint();
+    return;
+  }
+  variablesHint.hidden = false;
+  variablesHint.textContent = 'Variáveis disponíveis para contatos Google: {{nome}}';
+  googleSelectionDescription.textContent = googleSelection
+    ? `${googleSelection.summary.selected} selecionados; ${googleSelection.summary.eligible} elegíveis; ${googleSelection.summary.missingPhone + googleSelection.summary.invalidPhone} sem telefone ou inválidos; ${googleSelection.summary.duplicatePhone + googleSelection.summary.optedOut} duplicados ou opt-out.`
+    : 'Nenhuma seleção foi carregada. Revise os contatos e aplique os filtros antes de continuar.';
+}
 
 const CAMPAIGN_STATUS_LABELS = {
   draft: 'Não iniciada',
@@ -172,12 +243,19 @@ const CAMPAIGN_STATUS_LABELS = {
 async function loadDrafts() {
   const { items } = await request('/api/campaigns');
   hasCampaigns = items.length > 0;
-  drafts.innerHTML = items.length === 0 ? '<p>Nenhuma campanha salva ainda.</p>' : items.map((item) => `
+  drafts.innerHTML =
+    items.length === 0
+      ? '<p>Nenhuma campanha salva ainda.</p>'
+      : items
+          .map(
+            (item) => `
     <a class="saved-list" href="/campaign.html?id=${item.id}">
       <div><strong>${escapeHtml(item.name)}</strong><span>${escapeHtml(item.contactListName)} — ${item.recipientCount} destinatários</span></div>
       <b>${CAMPAIGN_STATUS_LABELS[item.status] ?? item.status}</b>
     </a>
-  `).join('');
+  `,
+          )
+          .join('');
   // Sem campanhas: mostra o composer direto. Com campanhas: mostra a lista e o
   // botão "Nova campanha", mantendo o composer fechado (a não ser que já esteja
   // aberto por ação do usuário).
@@ -242,6 +320,9 @@ form.addEventListener('submit', async (event) => {
   const submit = form.querySelector('[type="submit"]');
   submit.disabled = true;
   try {
+    if (recipientSource.value === 'google' && !googleSelection) {
+      throw new Error('Selecione os contatos Google antes de simular a campanha.');
+    }
     const input = readInput();
     const simulation = await request('/api/campaigns/simulate', {
       method: 'POST',
@@ -250,8 +331,11 @@ form.addEventListener('submit', async (event) => {
     });
     lastSimulationInput = input;
     renderSimulation(simulation);
-  } catch (error) { showError(error.message); }
-  finally { submit.disabled = false; }
+  } catch (error) {
+    showError(error.message);
+  } finally {
+    submit.disabled = false;
+  }
 });
 
 saveDraft.addEventListener('click', async () => {
@@ -263,11 +347,18 @@ saveDraft.addEventListener('click', async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(lastSimulationInput),
     });
+    if (lastSimulationInput.contactSelection) {
+      sessionStorage.removeItem('waDeliveryContactSelection');
+      googleSelection = undefined;
+    }
     resetComposer();
     showComposer(false);
     await loadDrafts();
-  } catch (error) { showError(error.message); }
-  finally { saveDraft.disabled = false; }
+  } catch (error) {
+    showError(error.message);
+  } finally {
+    saveDraft.disabled = false;
+  }
 });
 
 newCampaignButton.addEventListener('click', () => {
@@ -282,4 +373,6 @@ cancelComposerButton.addEventListener('click', () => {
   showComposer(false);
 });
 
+if (googleSelection) recipientSource.value = 'google';
+renderRecipientSource();
 Promise.all([loadLists(), loadDrafts()]).catch((error) => showError(error.message));

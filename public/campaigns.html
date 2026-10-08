@@ -12,7 +12,11 @@
     <main class="container wide">
       <header>
         <span class="eyebrow">WA-Delivery V2</span>
-        <nav><a href="/">WhatsApp</a><a href="/contacts.html">Contatos</a><a class="active" href="/campaigns.html">Campanhas</a><a href="/monitor.html">Monitoramento</a><a href="/settings.html">Configurações</a></nav>
+        <nav>
+          <a href="/">WhatsApp</a><a href="/contacts.html">Contatos</a
+          ><a class="active" href="/campaigns.html">Campanhas</a
+          ><a href="/monitor.html">Monitoramento</a><a href="/settings.html">Configurações</a>
+        </nav>
         <h1>Campanhas</h1>
         <p>Acompanhe suas campanhas e crie novas quando precisar.</p>
       </header>
@@ -21,7 +25,10 @@
 
       <section class="lists-section">
         <div class="section-heading">
-          <div><strong>Suas campanhas</strong><p>Selecione uma campanha para revisar, enviar ou reenviar.</p></div>
+          <div>
+            <strong>Suas campanhas</strong>
+            <p>Selecione uma campanha para revisar, enviar ou reenviar.</p>
+          </div>
           <button id="new-campaign" type="button" hidden>Nova campanha</button>
         </div>
         <div id="campaign-drafts" class="saved-lists"><p>Carregando...</p></div>
@@ -30,17 +37,51 @@
       <div id="composer" hidden>
         <section class="card">
           <div class="section-heading">
-            <div><strong>Nova campanha</strong><p>Monte e simule a campanha. Ao salvar, ela fica disponível para revisão e preparo antes de qualquer envio.</p></div>
+            <div>
+              <strong>Nova campanha</strong>
+              <p>
+                Monte e simule a campanha. Ao salvar, ela fica disponível para revisão e preparo
+                antes de qualquer envio.
+              </p>
+            </div>
             <button id="cancel-composer" class="secondary" type="button" hidden>Cancelar</button>
           </div>
           <form id="campaign-form">
             <div class="mapping-grid">
-              <label>Nome da campanha<input id="campaign-name" placeholder="Ex.: Promoção setembro" required /></label>
-              <label>Lista de contatos<select id="campaign-list" required></select></label>
+              <label
+                >Nome da campanha<input
+                  id="campaign-name"
+                  placeholder="Ex.: Promoção setembro"
+                  required
+              /></label>
+              <label
+                >Origem dos destinatários
+                <select id="recipient-source">
+                  <option value="local_list">Lista local (CSV/manual)</option>
+                  <option value="google">Seleção do Google Contacts</option>
+                </select>
+              </label>
+            </div>
+            <div id="local-list-source">
+              <label>Lista de contatos<select id="campaign-list"></select></label>
+            </div>
+            <div id="google-selection-source" class="selection-source-card" hidden>
+              <div>
+                <strong>Seleção Google Contacts</strong>
+                <p id="google-selection-description">Nenhuma seleção carregada.</p>
+              </div>
+              <a class="button-link" href="/contacts.html">Revisar contatos e filtros</a>
             </div>
 
-            <label>Mensagem
-              <textarea id="message-template" maxlength="4096" rows="8" placeholder="Olá {{nome}}, temos novidades para você!" required></textarea>
+            <label
+              >Mensagem
+              <textarea
+                id="message-template"
+                maxlength="4096"
+                rows="8"
+                placeholder="Olá {{nome}}, temos novidades para você!"
+                required
+              ></textarea>
             </label>
             <div class="composer-helper">
               <button id="insert-name" class="secondary" type="button">Inserir {{nome}}</button>
@@ -48,8 +89,13 @@
             </div>
             <p id="variables-hint" class="variables-hint" hidden></p>
 
-            <label>Mídia opcional
-              <input id="campaign-media" type="file" accept="image/jpeg,image/png,image/webp,video/mp4" />
+            <label
+              >Mídia opcional
+              <input
+                id="campaign-media"
+                type="file"
+                accept="image/jpeg,image/png,image/webp,video/mp4"
+              />
               <small>JPG, PNG ou WEBP até 10 MB; MP4 até 64 MB.</small>
             </label>
             <div id="media-preview" class="media-preview" hidden>
@@ -58,13 +104,76 @@
             </div>
 
             <div class="mapping-grid">
-              <label>Intervalo mínimo (segundos)<input id="delay-min" type="number" min="1" max="3600" value="5" required /></label>
-              <label>Intervalo máximo (segundos)<input id="delay-max" type="number" min="1" max="3600" value="10" required /></label>
+              <label
+                >Intervalo mínimo (segundos)<input
+                  id="delay-min"
+                  type="number"
+                  min="1"
+                  max="3600"
+                  value="5"
+                  required
+              /></label>
+              <label
+                >Intervalo máximo (segundos)<input
+                  id="delay-max"
+                  type="number"
+                  min="1"
+                  max="3600"
+                  value="10"
+                  required
+              /></label>
             </div>
+
+            <fieldset class="batch-settings">
+              <legend>Lotes da campanha</legend>
+              <div class="batch-settings-grid">
+                <label
+                  >Contatos por lote
+                  <input id="batch-size" type="number" min="1" max="100" value="50" required />
+                  <small>De 1 a 100 contatos.</small>
+                </label>
+                <label
+                  >Espera — horas
+                  <input
+                    id="batch-interval-hours"
+                    type="number"
+                    min="0"
+                    max="48"
+                    value="0"
+                    required
+                  />
+                </label>
+                <label
+                  >Espera — minutos
+                  <input
+                    id="batch-interval-minutes"
+                    type="number"
+                    min="0"
+                    max="59"
+                    value="0"
+                    required
+                  />
+                </label>
+                <label
+                  >Ordem dos contatos
+                  <select id="batch-order">
+                    <option value="name">Nome</option>
+                    <option value="google">Ordem original do Google/lista</option>
+                    <option value="random">Aleatória reproduzível</option>
+                  </select>
+                </label>
+              </div>
+              <p class="notice">
+                A campanha e a espera entre lotes ficam salvas para retomada após reiniciar a
+                aplicação.
+              </p>
+            </fieldset>
 
             <div class="actions">
               <button type="submit">Simular campanha</button>
-              <button id="save-draft" class="secondary" type="button" hidden>Salvar campanha</button>
+              <button id="save-draft" class="secondary" type="button" hidden>
+                Salvar campanha
+              </button>
             </div>
           </form>
         </section>
@@ -80,7 +189,10 @@
       </div>
     </main>
     <footer class="app-footer">
-      WA-Delivery V2 — <a href="https://github.com/dudushy/WA-Delivery" target="_blank" rel="noopener">github.com/dudushy/WA-Delivery</a>
+      WA-Delivery V2 —
+      <a href="https://github.com/dudushy/WA-Delivery" target="_blank" rel="noopener"
+        >github.com/dudushy/WA-Delivery</a
+      >
     </footer>
   </body>
 </html>

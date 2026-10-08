@@ -659,6 +659,36 @@ tbody tr:last-child td {
 .selection-all {
   margin: 18px 0 8px;
 }
+.selection-source-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 14px 0 20px;
+  padding: 16px;
+  border: 1px solid #b9ddcf;
+  border-radius: 14px;
+  background: #f2faf7;
+}
+.selection-source-card p {
+  margin: 4px 0 0;
+}
+.batch-settings {
+  margin: 20px 0;
+  padding: 18px;
+  border: 1px solid #dce4df;
+  border-radius: 14px;
+}
+.batch-settings legend {
+  padding: 0 8px;
+  color: #087f5b;
+  font-weight: 800;
+}
+.batch-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
 .contact-search-table {
   max-height: 520px;
 }
@@ -785,6 +815,13 @@ tbody tr:last-child td {
   .filter-save-row {
     align-items: stretch;
     flex-direction: column;
+  }
+  .selection-source-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .batch-settings-grid {
+    grid-template-columns: 1fr 1fr;
   }
 }
 

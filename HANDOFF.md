@@ -150,6 +150,19 @@ Integração do domínio de campanhas Google concluída após o checkpoint `ff24
 - testes cobrem simulação, persistência, formação de lotes, manifesto de inelegíveis e bloqueio do
   preparo quando a agenda muda.
 
+Integração do compositor e da revisão de campanha:
+
+- o compositor aceita lista local ou a seleção Google resolvida na tela de contatos;
+- exibe contagens de selecionados/elegíveis/inelegíveis e bloqueia simulação Google sem seleção;
+- tamanho do lote (1–100), intervalo em horas/minutos (total validado até 48 horas) e ordem são
+  configuráveis e enviados ao backend;
+- simulação mostra quantidade/tamanho dos lotes e inclui as esperas na duração prevista;
+- rascunhos Google podem ser reabertos e editados sem perder filtros, IDs ou seed da ordem
+  aleatória;
+- revisão preparada mostra telefone bruto quando não há canônico, lote e motivo estruturado dos
+  inelegíveis;
+- CSV/manual continuam disponíveis no mesmo compositor e recebem os mesmos controles de lote.
+
 ## Validações da última etapa
 
 - `npm.cmd run typecheck`: passou.
@@ -165,8 +178,8 @@ Integração do domínio de campanhas Google concluída após o checkpoint `ff24
 
 ## Próximo passo
 
-1. Integrar seleção e configuração de lotes ao compositor/wizard de campanhas.
-2. Implementar execução persistente e espera retomável entre lotes.
+1. Implementar execução persistente e espera retomável entre lotes.
+2. Emitir progresso/contagem regressiva de lote por SSE e exibir na revisão/monitoramento.
 3. Evoluir o editor visual para grupos `E`/`OU` aninhados sem perder ASTs já salvas.
 
 ## Decisões e cuidados ativos

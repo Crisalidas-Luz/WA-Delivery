@@ -6,10 +6,17 @@ const details = document.querySelector('#campaign-details');
 const form = document.querySelector('#campaign-form');
 const campaignName = document.querySelector('#campaign-name');
 const contactList = document.querySelector('#campaign-list');
+const contactListLabel = document.querySelector('#campaign-list-label');
+const googleSelectionPanel = document.querySelector('#campaign-google-selection');
+const googleSelectionSummary = document.querySelector('#campaign-google-selection-summary');
 const messageTemplate = document.querySelector('#message-template');
 const messageCounter = document.querySelector('#message-counter');
 const delayMin = document.querySelector('#delay-min');
 const delayMax = document.querySelector('#delay-max');
+const batchSize = document.querySelector('#batch-size');
+const batchIntervalHours = document.querySelector('#batch-interval-hours');
+const batchIntervalMinutes = document.querySelector('#batch-interval-minutes');
+const batchOrder = document.querySelector('#batch-order');
 const insertName = document.querySelector('#insert-name');
 const mediaInput = document.querySelector('#campaign-media-input');
 const mediaPanel = document.querySelector('#campaign-media');
@@ -42,6 +49,7 @@ const sourceLink = document.querySelector('#source-link');
 const errorPanel = document.querySelector('#campaign-error');
 const campaignId = Number(new URLSearchParams(location.search).get('id'));
 let selectedMedia;
+let loadedCampaign;
 
 function showError(text = '') {
   errorPanel.hidden = !text;
@@ -52,7 +60,11 @@ async function request(path, options = {}) {
   const response = await fetch(path, options);
   const body = response.status === 204 ? undefined : await response.json();
   if (!response.ok) {
-    throw new Error(body?.issues?.map((issue) => issue.message).join(' ') || body?.message || 'Falha na solicitação.');
+    throw new Error(
+      body?.issues?.map((issue) => issue.message).join(' ') ||
+        body?.message ||
+        'Falha na solicitação.',
+    );
   }
   return body;
 }
@@ -73,7 +85,11 @@ function renderMedia() {
 }
 
 const RECIPIENT_STATUS_LABELS = {
-  pending: 'Pendente', sending: 'Enviando', sent: 'Enviado', failed: 'Falha', skipped: 'Ignorado',
+  pending: 'Pendente',
+  sending: 'Enviando',
+  sent: 'Enviado',
+  failed: 'Falha',
+  skipped: 'Ignorado',
 };
 let allRecipients = [];
 
@@ -95,7 +111,7 @@ function paintRecipients() {
     const name = document.createElement('strong');
     name.textContent = recipient.name;
     const phone = document.createElement('span');
-    phone.textContent = recipient.phone;
+    phone.textContent = recipient.phone ?? recipient.phoneOriginal ?? 'Sem telefone';
     heading.append(name, phone);
 
     const meta = document.createElement('div');
@@ -104,6 +120,10 @@ function paintRecipients() {
     badge.className = `status-badge status-${recipient.status}`;
     badge.textContent = RECIPIENT_STATUS_LABELS[recipient.status] ?? recipient.status;
     meta.append(badge);
+    const batch = document.createElement('span');
+    batch.className = 'recipient-attempts';
+    batch.textContent = `Lote ${recipient.batchNumber}`;
+    meta.append(batch);
     if (recipient.attemptCount) {
       const attempts = document.createElement('span');
       attempts.className = 'recipient-attempts';
@@ -120,6 +140,12 @@ function paintRecipients() {
       error.className = 'recipient-error';
       error.textContent = recipient.lastError;
       article.append(error);
+    }
+    if (recipient.resultReason) {
+      const reason = document.createElement('p');
+      reason.className = 'recipient-error';
+      reason.textContent = recipient.resultReason;
+      article.append(reason);
     }
     recipientList.append(article);
   }
@@ -142,12 +168,22 @@ function applyLockedState(campaign, recipients) {
 }
 
 function renderProgress(progress) {
-  const labels = { ready: 'pronta para envio', running: 'em execução', paused: 'pausada', completed: 'concluída', cancelled: 'cancelada', failed: 'com falha' };
+  const labels = {
+    ready: 'pronta para envio',
+    running: 'em execução',
+    paused: 'pausada',
+    completed: 'concluída',
+    cancelled: 'cancelada',
+    failed: 'com falha',
+  };
   statusText.textContent = `Status: ${labels[progress.status] || progress.status}.`;
   executionMetrics.replaceChildren();
   for (const [label, value] of [
-    ['Total', progress.total], ['Pendentes', progress.pending], ['Enviados', progress.sent],
-    ['Falhas', progress.failed], ['Ignorados', progress.skipped],
+    ['Total', progress.total],
+    ['Pendentes', progress.pending],
+    ['Enviados', progress.sent],
+    ['Falhas', progress.failed],
+    ['Ignorados', progress.skipped],
   ]) {
     const metric = document.createElement('div');
     metric.className = 'metric';
@@ -170,17 +206,20 @@ function renderProgress(progress) {
   cancelCampaign.hidden = !['ready', 'running', 'paused'].includes(progress.status);
   if (executionNotice) {
     executionNotice.hidden = !running;
-    executionNotice.textContent = running ? 'Campanha em execução. Os envios estão sendo processados.' : '';
+    executionNotice.textContent = running
+      ? 'Campanha em execução. Os envios estão sendo processados.'
+      : '';
   }
   // Reenvio dos pendentes só a partir de uma campanha finalizada.
   if (followUpZone) {
-    const hasPending = (progress.failed + progress.skipped) > 0;
+    const hasPending = progress.failed + progress.skipped > 0;
     followUpZone.hidden = !(terminal && hasPending);
   }
 }
 
 async function load() {
-  if (!Number.isSafeInteger(campaignId) || campaignId <= 0) throw new Error('Identificador da campanha inválido.');
+  if (!Number.isSafeInteger(campaignId) || campaignId <= 0)
+    throw new Error('Identificador da campanha inválido.');
   const [{ items: lists }, campaign] = await Promise.all([
     request('/api/contact-lists'),
     request(`/api/campaigns/${campaignId}`),
@@ -193,12 +232,24 @@ async function load() {
     contactList.append(option);
   }
   title.textContent = campaign.name;
+  loadedCampaign = campaign;
   campaignName.value = campaign.name;
-  contactList.value = String(campaign.contactListId);
+  contactList.value = campaign.contactListId ? String(campaign.contactListId) : '';
+  const usesGoogle = campaign.selectionSource === 'google';
+  contactListLabel.hidden = usesGoogle;
+  googleSelectionPanel.hidden = !usesGoogle;
+  if (usesGoogle) {
+    const summary = campaign.selectionSummary ?? {};
+    googleSelectionSummary.textContent = `${summary.selected ?? 0} selecionados; ${summary.eligible ?? 0} elegíveis. Os filtros e exceções estão salvos no rascunho.`;
+  }
   messageTemplate.value = campaign.messageTemplate;
   messageCounter.textContent = `${campaign.messageTemplate.length} / 4096`;
   delayMin.value = String(campaign.delayMinSeconds);
   delayMax.value = String(campaign.delayMaxSeconds);
+  batchSize.value = String(campaign.batchSize);
+  batchIntervalHours.value = String(Math.floor(campaign.batchIntervalSeconds / 3600));
+  batchIntervalMinutes.value = String(Math.floor((campaign.batchIntervalSeconds % 3600) / 60));
+  batchOrder.value = campaign.batchOrder;
   selectedMedia = campaign.media;
   renderMedia();
   details.hidden = false;
@@ -231,7 +282,12 @@ messageTemplate.addEventListener('input', () => {
 });
 
 insertName.addEventListener('click', () => {
-  messageTemplate.setRangeText('{{nome}}', messageTemplate.selectionStart, messageTemplate.selectionEnd, 'end');
+  messageTemplate.setRangeText(
+    '{{nome}}',
+    messageTemplate.selectionStart,
+    messageTemplate.selectionEnd,
+    'end',
+  );
   messageTemplate.dispatchEvent(new Event('input'));
   messageTemplate.focus();
 });
@@ -300,10 +356,14 @@ async function queueAction(action, body) {
       return;
     }
     renderProgress(progress);
-  } catch (error) { showError(error.message); }
+  } catch (error) {
+    showError(error.message);
+  }
 }
 
-startCampaign.addEventListener('click', () => queueAction('start', { confirmed: startConfirmation.checked }));
+startCampaign.addEventListener('click', () =>
+  queueAction('start', { confirmed: startConfirmation.checked }),
+);
 pauseCampaign.addEventListener('click', () => queueAction('pause'));
 resumeCampaign.addEventListener('click', () => queueAction('resume'));
 cancelCampaign.addEventListener('click', () => {
@@ -319,13 +379,16 @@ events.addEventListener('campaign-progress', (event) => {
   renderProgress(progress);
   // Atualiza a lista de destinatários para refletir status/erros em tempo real.
   void request(`/api/campaigns/${campaignId}/recipients`)
-    .then(({ items }) => { if (!recipientReview.hidden) renderRecipients(items); })
+    .then(({ items }) => {
+      if (!recipientReview.hidden) renderRecipients(items);
+    })
     .catch(() => {});
 });
 
 if (recipientFilter) recipientFilter.addEventListener('change', paintRecipients);
 if (exportAll) exportAll.setAttribute('href', `/api/campaigns/${campaignId}/export`);
-if (exportFailures) exportFailures.setAttribute('href', `/api/campaigns/${campaignId}/export?onlyFailures=true`);
+if (exportFailures)
+  exportFailures.setAttribute('href', `/api/campaigns/${campaignId}/export?onlyFailures=true`);
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -337,19 +400,29 @@ form.addEventListener('submit', async (event) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: campaignName.value,
-        contactListId: Number(contactList.value),
+        ...(loadedCampaign.selectionSource === 'google'
+          ? { contactSelection: loadedCampaign.contactSelection }
+          : { contactListId: Number(contactList.value) }),
         messageTemplate: messageTemplate.value,
         delayMinSeconds: Number(delayMin.value),
         delayMaxSeconds: Number(delayMax.value),
+        batchSize: Number(batchSize.value),
+        batchIntervalSeconds:
+          Number(batchIntervalHours.value) * 3600 + Number(batchIntervalMinutes.value) * 60,
+        batchOrder: batchOrder.value,
+        ...(loadedCampaign.batchOrderSeed ? { batchOrderSeed: loadedCampaign.batchOrderSeed } : {}),
         mediaId: selectedMedia?.id ?? null,
       }),
     });
     selectedMedia = updated.media;
+    loadedCampaign = updated;
     title.textContent = updated.name;
     renderMedia();
     mediaInput.value = '';
     saveButton.textContent = 'Alterações salvas';
-    setTimeout(() => { saveButton.textContent = 'Salvar alterações'; }, 1800);
+    setTimeout(() => {
+      saveButton.textContent = 'Salvar alterações';
+    }, 1800);
   } catch (error) {
     showError(error.message);
   } finally {
@@ -358,7 +431,12 @@ form.addEventListener('submit', async (event) => {
 });
 
 deleteButton.addEventListener('click', async () => {
-  if (!confirm('Excluir esta campanha? Esta ação não pode ser desfeita e removerá o histórico dos envios.')) return;
+  if (
+    !confirm(
+      'Excluir esta campanha? Esta ação não pode ser desfeita e removerá o histórico dos envios.',
+    )
+  )
+    return;
   deleteButton.disabled = true;
   try {
     await request(`/api/campaigns/${campaignId}`, { method: 'DELETE' });
@@ -371,7 +449,12 @@ deleteButton.addEventListener('click', async () => {
 
 if (followUpButton) {
   followUpButton.addEventListener('click', async () => {
-    if (!confirm('Criar uma nova campanha com apenas os destinatários pendentes (falhas e ignorados)? A campanha atual será mantida como histórico.')) return;
+    if (
+      !confirm(
+        'Criar uma nova campanha com apenas os destinatários pendentes (falhas e ignorados)? A campanha atual será mantida como histórico.',
+      )
+    )
+      return;
     followUpButton.disabled = true;
     showError();
     try {
