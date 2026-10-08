@@ -40,7 +40,13 @@ function setup() {
       'Ana',
       'Ávila',
       'Crisálidas',
-      JSON.stringify({ emailAddresses: [{ value: 'ana@example.com' }] }),
+      JSON.stringify({
+        emailAddresses: [{ value: 'ana@example.com' }],
+        addresses: [{ formattedValue: 'Rua das Flores, Ribeirão Preto' }],
+        relations: [{ person: 'Beatriz', type: 'sister' }],
+        urls: [{ value: 'https://example.com/ana', type: 'profile' }],
+        userDefined: [{ key: 'Segmento', value: 'Premium' }],
+      }),
     ).lastInsertRowid,
   );
   const bruno = Number(
@@ -120,6 +126,19 @@ describe('ContactSelectionRepository', () => {
       );
       assert.equal(
         repository.search({ filter: filter('email', 'contains', 'ana@example.com') }).total,
+        1,
+      );
+      assert.equal(repository.search({ filter: filter('address', 'contains', 'flores') }).total, 1);
+      assert.equal(
+        repository.search({ filter: filter('relation', 'contains', 'beatriz') }).total,
+        1,
+      );
+      assert.equal(
+        repository.search({ filter: filter('url', 'contains', 'example.com/ana') }).total,
+        1,
+      );
+      assert.equal(
+        repository.search({ filter: filter('userDefined', 'contains', 'premium') }).total,
         1,
       );
     } finally {

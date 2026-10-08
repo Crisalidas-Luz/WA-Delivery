@@ -364,6 +364,16 @@ Backup das novas estruturas sem tokens:
   backup e permanece intacto depois da restauração;
 - a restauração continua recusando schema mais novo, preservando a proteção de rollback já testada.
 
+Filtros para campos amplos da People API:
+
+- endereço, relação, URL e campo personalizado agora fazem parte da allowlist versionada e aparecem
+  no construtor visual de filtros;
+- cada campo usa `json_each`/`json_extract` parametrizado sobre sua coleção específica no JSON,
+  evitando que uma busca de e-mail corresponda acidentalmente a outro campo bruto;
+- endereços combinam valor formatado, rua, cidade, região, CEP e país; relações, URLs e campos
+  personalizados combinam seus pares de tipo/chave e valor;
+- testes consultam dados reais dessas quatro coleções, além do e-mail já existente.
+
 ## Validações da última etapa
 
 - `npm.cmd run typecheck`: passou.

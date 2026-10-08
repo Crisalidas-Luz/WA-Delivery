@@ -48,6 +48,16 @@ function compileRule(rule: ContactFilterRule, parameters: SQLInputValue[]): stri
       ')',
     );
   }
+  const jsonField = JSON_ARRAY_FIELDS[rule.field as keyof typeof JSON_ARRAY_FIELDS];
+  if (jsonField) {
+    return compileExpression(
+      `EXISTS (SELECT 1 FROM json_each(gc.raw_json, '${jsonField.path}') filter_json
+        WHERE LOWER(COALESCE(${jsonField.expression}, ''))`,
+      rule,
+      parameters,
+      ')',
+    );
+  }
   if (rule.field === 'phoneValidity') {
     const valid = String(rule.value).toLowerCase() === 'valid';
     parameters.push(valid ? 1 : 0);
@@ -70,7 +80,8 @@ function compileRule(rule: ContactFilterRule, parameters: SQLInputValue[]): stri
       WHERE own_phone.google_contact_id = gc.id AND local_contact.opted_out = 1)`;
     return optedOut ? exists : `NOT ${exists}`;
   }
-  const column = FIELD_EXPRESSIONS[rule.field];
+  if (!(rule.field in FIELD_EXPRESSIONS)) throw new Error('Campo de filtro sem compilador SQL.');
+  const column = FIELD_EXPRESSIONS[rule.field as keyof typeof FIELD_EXPRESSIONS];
   return compileExpression(`LOWER(COALESCE(${column}, ''))`, rule, parameters);
 }
 
@@ -80,13 +91,43 @@ const FIELD_EXPRESSIONS = {
   middleName: 'gc.middle_name',
   familyName: 'gc.family_name',
   nickname: 'gc.nickname',
-  email: 'gc.raw_json',
   organizationName: 'gc.organization_name',
   organizationTitle: 'gc.organization_title',
   organizationDepartment: 'gc.organization_department',
   birthday: 'gc.birthday',
   biography: 'gc.biography',
   remoteUpdatedAt: 'gc.remote_updated_at',
+} as const;
+
+const JSON_ARRAY_FIELDS = {
+  email: {
+    path: '$.emailAddresses',
+    expression: "json_extract(filter_json.value, '$.value')",
+  },
+  address: {
+    path: '$.addresses',
+    expression: `COALESCE(json_extract(filter_json.value, '$.formattedValue'), '') || ' ' ||
+      COALESCE(json_extract(filter_json.value, '$.streetAddress'), '') || ' ' ||
+      COALESCE(json_extract(filter_json.value, '$.city'), '') || ' ' ||
+      COALESCE(json_extract(filter_json.value, '$.region'), '') || ' ' ||
+      COALESCE(json_extract(filter_json.value, '$.postalCode'), '') || ' ' ||
+      COALESCE(json_extract(filter_json.value, '$.country'), '')`,
+  },
+  relation: {
+    path: '$.relations',
+    expression: `COALESCE(json_extract(filter_json.value, '$.person'), '') || ' ' ||
+      COALESCE(json_extract(filter_json.value, '$.type'), '')`,
+  },
+  url: {
+    path: '$.urls',
+    expression: `COALESCE(json_extract(filter_json.value, '$.value'), '') || ' ' ||
+      COALESCE(json_extract(filter_json.value, '$.type'), '')`,
+  },
+  userDefined: {
+    path: '$.userDefined',
+    expression: `COALESCE(json_extract(filter_json.value, '$.key'), '') || ' ' ||
+      COALESCE(json_extract(filter_json.value, '$.value'), '')`,
+  },
 } as const;
 
 function compileSource(rule: ContactFilterRule, parameters: SQLInputValue[]): string {
