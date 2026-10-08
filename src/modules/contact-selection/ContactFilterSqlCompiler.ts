@@ -1,4 +1,5 @@
 import type { SQLInputValue } from 'node:sqlite';
+import { foldSearchText } from '../../database/database.js';
 import {
   validateContactFilter,
   type ContactFilterDefinition,
@@ -32,7 +33,7 @@ function compileRule(rule: ContactFilterRule, parameters: SQLInputValue[]): stri
   if (rule.field === 'label') {
     return compileExpression(
       `EXISTS (SELECT 1 FROM google_contact_labels filter_label
-        WHERE filter_label.google_contact_id = gc.id AND LOWER(filter_label.name)`,
+        WHERE filter_label.google_contact_id = gc.id AND fold_text(filter_label.name)`,
       rule,
       parameters,
       ')',
@@ -42,7 +43,7 @@ function compileRule(rule: ContactFilterRule, parameters: SQLInputValue[]): stri
     const column = rule.field === 'phone' ? 'filter_phone.normalized_phone' : 'filter_phone.label';
     return compileExpression(
       `EXISTS (SELECT 1 FROM google_contact_phones filter_phone
-        WHERE filter_phone.google_contact_id = gc.id AND LOWER(COALESCE(${column}, ''))`,
+        WHERE filter_phone.google_contact_id = gc.id AND fold_text(COALESCE(${column}, ''))`,
       rule,
       parameters,
       ')',
@@ -52,7 +53,7 @@ function compileRule(rule: ContactFilterRule, parameters: SQLInputValue[]): stri
   if (jsonField) {
     return compileExpression(
       `EXISTS (SELECT 1 FROM json_each(gc.raw_json, '${jsonField.path}') filter_json
-        WHERE LOWER(COALESCE(${jsonField.expression}, ''))`,
+        WHERE fold_text(COALESCE(${jsonField.expression}, ''))`,
       rule,
       parameters,
       ')',
@@ -82,7 +83,7 @@ function compileRule(rule: ContactFilterRule, parameters: SQLInputValue[]): stri
   }
   if (!(rule.field in FIELD_EXPRESSIONS)) throw new Error('Campo de filtro sem compilador SQL.');
   const column = FIELD_EXPRESSIONS[rule.field as keyof typeof FIELD_EXPRESSIONS];
-  return compileExpression(`LOWER(COALESCE(${column}, ''))`, rule, parameters);
+  return compileExpression(`fold_text(COALESCE(${column}, ''))`, rule, parameters);
 }
 
 const FIELD_EXPRESSIONS = {
@@ -131,10 +132,7 @@ const JSON_ARRAY_FIELDS = {
 } as const;
 
 function compileSource(rule: ContactFilterRule, parameters: SQLInputValue[]): string {
-  const expected = String(rule.value).toLowerCase();
-  parameters.push(expected);
-  if (rule.operator === 'notEquals' || rule.operator === 'notIn') return "'google' <> ?";
-  return "'google' = ?";
+  return compileExpression("'google'", rule, parameters);
 }
 
 function compileExpression(
@@ -186,9 +184,7 @@ function compileExpression(
 }
 
 function normalize(value: unknown): string {
-  return String(value ?? '')
-    .trim()
-    .toLocaleLowerCase('pt-BR');
+  return foldSearchText(value);
 }
 
 function escapeLike(value: string): string {

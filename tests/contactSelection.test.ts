@@ -96,7 +96,7 @@ describe('compileContactFilter', () => {
       },
     });
     assert.match(compiled.sql, / OR /);
-    assert.deepEqual(compiled.parameters, ['crisálidas', '%vip%']);
+    assert.deepEqual(compiled.parameters, ['crisalidas', '%vip%']);
   });
 });
 
@@ -110,6 +110,55 @@ describe('ContactSelectionRepository', () => {
       assert.equal(result.items[0]?.phone, '5516999991111');
       assert.equal(result.items[0]?.phoneValid, true);
       assert.deepEqual(result.items[0]?.labels, ['Clientes VIP']);
+      assert.equal(repository.search({ filter: filter('familyName', 'equals', 'avila') }).total, 1);
+      assert.equal(
+        repository.search({ filter: filter('organizationName', 'contains', 'crisalidas') }).total,
+        1,
+      );
+    } finally {
+      database.close();
+    }
+  });
+
+  it('executa todos os operadores textuais, de lista, vazio e data', () => {
+    const { database, repository } = setup();
+    try {
+      database
+        .prepare(
+          `UPDATE google_contacts
+           SET birthday = CASE resource_name WHEN 'people/1' THEN '1990-05-10' ELSE '2000-08-20' END,
+               biography = CASE resource_name WHEN 'people/1' THEN 'Cliente premium' ELSE '' END,
+               remote_updated_at = CASE resource_name
+                 WHEN 'people/1' THEN '2026-01-15T10:00:00Z'
+                 ELSE '2026-06-20T10:00:00Z'
+               END`,
+        )
+        .run();
+
+      const cases: Array<[string, string, unknown, number]> = [
+        ['displayName', 'contains', 'ana', 1],
+        ['displayName', 'notContains', 'ana', 1],
+        ['givenName', 'equals', 'ANA', 1],
+        ['givenName', 'notEquals', 'ana', 1],
+        ['displayName', 'startsWith', 'ana', 1],
+        ['familyName', 'endsWith', 'vila', 1],
+        ['biography', 'isEmpty', undefined, 1],
+        ['biography', 'isNotEmpty', undefined, 1],
+        ['birthday', 'before', '1995-01-01', 1],
+        ['birthday', 'after', '1995-01-01', 1],
+        ['remoteUpdatedAt', 'between', ['2026-01-01', '2026-03-01'], 1],
+        ['givenName', 'in', ['ana', 'inexistente'], 1],
+        ['givenName', 'notIn', ['ana'], 1],
+        ['source', 'startsWith', 'goo', 2],
+      ];
+
+      for (const [field, operator, value, expected] of cases) {
+        assert.equal(
+          repository.search({ filter: filter(field, operator, value) }).total,
+          expected,
+          `${field}/${operator}`,
+        );
+      }
     } finally {
       database.close();
     }

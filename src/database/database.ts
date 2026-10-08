@@ -6,10 +6,21 @@ export function openDatabase(filename: string): DatabaseSync {
   if (filename !== ':memory:') mkdirSync(dirname(filename), { recursive: true });
 
   const database = new DatabaseSync(filename);
+  database.function('fold_text', { deterministic: true }, (value: unknown) =>
+    foldSearchText(value),
+  );
   database.exec('PRAGMA foreign_keys = ON');
   if (filename !== ':memory:') database.exec('PRAGMA journal_mode = WAL');
   migrate(database);
   return database;
+}
+
+export function foldSearchText(value: unknown): string {
+  return String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toLocaleLowerCase('pt-BR');
 }
 
 function migrate(database: DatabaseSync): void {

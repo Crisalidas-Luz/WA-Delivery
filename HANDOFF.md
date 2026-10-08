@@ -435,12 +435,22 @@ Endurecimento de dependências e payloads:
 - jobs de exclusão aceitam no máximo 10.000 destinatários, alinhados ao limite da seleção;
 - testes cobrem tanto o limite HTTP quanto a recusa antecipada de jobs excessivos.
 
+Busca sem acentos e matriz completa de operadores:
+
+- o SQLite registra uma função determinística local que normaliza caixa e remove diacríticos sem
+  alterar os dados originais sincronizados;
+- campos materializados, labels, telefones e coleções amplas do JSON usam a mesma normalização;
+- buscas como `Avila`/`Crisalidas` encontram `Ávila`/`Crisálidas`;
+- o campo de origem passou a respeitar os mesmos operadores parametrizados dos demais textos;
+- testes em banco real cobrem contém, não contém, igual, diferente, começa, termina, vazio, não
+  vazio, antes, depois, entre, em lista e fora da lista.
+
 ## Validações da última etapa
 
 - `npm.cmd run typecheck`: passou.
 - `npm.cmd run lint`: passou.
 - `npm.cmd run format`: passou e normalizou os arquivos alterados.
-- `npm.cmd test`: 194 testes passaram, 0 falharam.
+- `npm.cmd test`: 195 testes passaram, 0 falharam.
 - `npm.cmd run build`: passou.
 - `node --check public/settings.js` e `node --check public/campaign.js`: passaram.
 - `node --check public/monitor.js`: passou.
