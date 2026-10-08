@@ -137,11 +137,20 @@ export function registerCampaignRoutes(
     if (!Number.isSafeInteger(id) || id <= 0) {
       return reply.code(400).send({ message: 'Identificador da campanha inválido.' });
     }
-    if (!(await campaigns.deleteCampaign(id))) {
+    const blockReason = campaigns.deletionBlockReason(id);
+    if (blockReason === 'not_found')
+      return reply.code(404).send({ message: 'Campanha não encontrada.' });
+    if (blockReason === 'running')
       return reply
         .code(409)
         .send({ message: 'A campanha não pode ser excluída enquanto está em execução.' });
-    }
+    if (blockReason === 'incomplete_deletion_job')
+      return reply.code(409).send({
+        message:
+          'Conclua ou cancele a auditoria de exclusão de contatos antes de excluir a campanha.',
+      });
+    if (!(await campaigns.deleteCampaign(id)))
+      return reply.code(409).send({ message: 'A campanha não pôde ser excluída.' });
     return reply.code(204).send();
   });
 

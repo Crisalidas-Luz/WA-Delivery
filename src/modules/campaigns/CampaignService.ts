@@ -164,6 +164,10 @@ export class CampaignService {
     return true;
   }
 
+  public deletionBlockReason(id: number) {
+    return this.repository.deletionBlockReason(id);
+  }
+
   /**
    * Limpeza explícita por retenção: remove campanhas finalizadas há mais de
    * `retentionDays` dias, junto com destinatários, tentativas e mídias. Retorna

@@ -803,6 +803,7 @@ describe('CampaignService.deleteCampaign', () => {
            VALUES (?, 'failed', 1, CURRENT_TIMESTAMP)`,
         )
         .run(second.id);
+      assert.equal(campaigns.deletionBlockReason(second.id), 'incomplete_deletion_job');
       assert.equal(await campaigns.deleteCampaign(second.id), false);
       assert.ok(campaigns.findById(second.id));
     } finally {

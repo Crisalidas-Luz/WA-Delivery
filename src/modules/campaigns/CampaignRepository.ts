@@ -340,6 +340,22 @@ export class CampaignRepository {
     }));
   }
 
+  public deletionBlockReason(
+    id: number,
+  ): 'not_found' | 'running' | 'incomplete_deletion_job' | undefined {
+    const campaign = this.database.prepare('SELECT status FROM campaigns WHERE id = ?').get(id) as
+      { status: CampaignSummary['status'] } | undefined;
+    if (!campaign) return 'not_found';
+    if (campaign.status === 'running') return 'running';
+    const incompleteDeletionJob = this.database
+      .prepare(
+        `SELECT 1 FROM contact_deletion_jobs WHERE campaign_id = ?
+         AND status IN ('pending', 'running', 'partial', 'failed') LIMIT 1`,
+      )
+      .get(id);
+    return incompleteDeletionJob ? 'incomplete_deletion_job' : undefined;
+  }
+
   public deleteCampaign(id: number): DeletedDraft | undefined {
     const row = this.database
       .prepare(
@@ -358,14 +374,7 @@ export class CampaignRepository {
         }
       | undefined;
     // Uma campanha em execução não pode ser excluída; cancele-a antes.
-    if (!row || row.status === 'running') return undefined;
-    const incompleteDeletionJob = this.database
-      .prepare(
-        `SELECT 1 FROM contact_deletion_jobs WHERE campaign_id = ?
-         AND status IN ('pending', 'running', 'partial', 'failed') LIMIT 1`,
-      )
-      .get(id);
-    if (incompleteDeletionJob) return undefined;
+    if (!row || this.deletionBlockReason(id)) return undefined;
 
     this.database.exec('BEGIN IMMEDIATE');
     try {

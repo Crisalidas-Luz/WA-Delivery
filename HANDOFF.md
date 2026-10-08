@@ -345,6 +345,15 @@ Retomada explícita depois de reinício:
 - teste de recuperação confirma que uma espera de 90 segundos permanece salva e sem
   `next_batch_at` enquanto pausada.
 
+Diagnóstico de exclusão de campanha:
+
+- o domínio agora distingue campanha inexistente, campanha em execução e campanha bloqueada por
+  job de exclusão incompleto;
+- a rota retorna `404` para ID inexistente e mensagens `409` específicas para execução ativa ou
+  auditoria pendente/parcial/com falha;
+- campanhas com auditoria concluída continuam sendo removidas junto com seus registros terminais;
+- o teste de retenção/auditoria verifica explicitamente o motivo estruturado do bloqueio.
+
 ## Validações da última etapa
 
 - `npm.cmd run typecheck`: passou.
@@ -361,8 +370,8 @@ Retomada explícita depois de reinício:
 ## Próximo passo
 
 1. Revisar acessibilidade/progresso de operações longas e a cobertura do fluxo visual.
-2. Revisar o tratamento de erro ao excluir campanhas bloqueadas por auditoria incompleta.
-3. Auditar requisitos do `AGENTS.md` ainda sem evidência direta e ampliar testes de rotas/UI.
+2. Auditar requisitos do `AGENTS.md` ainda sem evidência direta e ampliar testes de rotas/UI.
+3. Revisar backup/restauração e compatibilidade das novas tabelas com evidência específica.
 4. Executar QA real de OAuth, sincronização, envio e exclusão com contas de teste antes do merge.
 
 ## Decisões e cuidados ativos
