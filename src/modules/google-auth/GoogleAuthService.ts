@@ -1,4 +1,5 @@
 import type {
+  GoogleContactRecord,
   GoogleOAuthStart,
   GooglePeopleProvider,
   GoogleTokenSet,
@@ -71,6 +72,16 @@ export class GoogleAuthService {
   public async synchronize(): Promise<{ created: number; updated: number; deleted: number }> {
     const tokens = await this.validTokens();
     return this.syncService.sync(tokens);
+  }
+
+  /** Executa leituras remotas sem expor tokens para as camadas de domínio. */
+  public async getContact(resourceName: string): Promise<GoogleContactRecord | undefined> {
+    return this.provider.getContact(await this.validTokens(), resourceName);
+  }
+
+  /** Executa uma exclusão remota autenticada sem expor tokens para as camadas de domínio. */
+  public async deleteContact(resourceName: string): Promise<void> {
+    await this.provider.deleteContact(await this.validTokens(), resourceName);
   }
 
   public async disconnect(): Promise<void> {

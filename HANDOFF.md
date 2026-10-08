@@ -10,9 +10,7 @@ pendências e próximo passo. Não substituir o plano completo de produto em `AG
 
 - Branch de desenvolvimento: `feat/google-contacts-campaign-flow`
 - Base: `main` no commit `cfc3881`
-- Último commit funcional antes da pausa: `11b2044` (`feat: add structured campaign manifest`)
-- Sessão pausada a pedido do usuário em 07/10/2026; não há implementação parcialmente editada no
-  worktree neste checkpoint.
+- Checkpoint anterior à retomada: `2eb690b` (`docs: checkpoint paused development state`).
 - Etapa em andamento: Fase 3 — campanhas Google e lotes
 - Merge para `main`: proibido até validação integral e aprovação do usuário
 
@@ -197,12 +195,33 @@ Manifesto estruturado e semântica de resultado:
 - testes cobrem aceite, número fora do WhatsApp, falha permanente, esgotamento transitório,
   agregação do manifesto e endpoint.
 
+Jobs auditáveis de exclusão Google:
+
+- criação exige campanha terminal, seleção não vazia e confirmação destrutiva explícita;
+- somente destinatários vinculados ao Google com evidência forte (`missing_phone`, `invalid_phone`
+  ou `not_on_whatsapp`) podem entrar no job; falhas transitórias e recomendações inseguras são
+  recusadas pelo backend;
+- cada item preserva contato, motivo, evidências estruturadas e snapshot dos dados usados na
+  confirmação;
+- antes de excluir, o serviço relê o contato remoto e revalida a evidência; casos com múltiplos
+  telefones são bloqueados para revisão manual e `not_on_whatsapp` é consultado novamente no
+  WhatsApp;
+- exclusões são sequenciais, com backoff limitado para `429`/`5xx`; `401`/`403` interrompe os itens
+  restantes e solicita reconexão sem expor detalhes sensíveis;
+- sucesso remoto é registrado separadamente da verificação; uma sincronização posterior marca
+  `verified_at`, e contatos já ausentes recebem `already_missing`;
+- endpoints criam, consultam e repetem somente itens com falha;
+- o manifesto permite seleção individual sem pré-seleção, mostra quantidade/motivos, exige checkbox
+  e confirmação final, e apresenta o resultado de cada exclusão;
+- testes cobrem exclusão verificada, mudança de evidência, ausência de confirmação/recomendação e
+  interrupção por autorização.
+
 ## Validações da última etapa
 
 - `npm.cmd run typecheck`: passou.
 - `npm.cmd run lint`: passou.
 - `npm.cmd run format`: passou e normalizou os arquivos alterados.
-- `npm.cmd test`: 167 testes passaram, 0 falharam.
+- `npm.cmd test`: 171 testes passaram, 0 falharam.
 - `npm.cmd run build`: passou.
 - `node --check public/contacts.js`: passou.
 - Observação do ambiente: dentro do sandbox, o loader `tsx` falhou em `uv_os_get_passwd` com
@@ -212,16 +231,11 @@ Manifesto estruturado e semântica de resultado:
 
 ## Próximo passo
 
-1. Implementar revisão e jobs auditáveis de exclusão Google.
-2. Confirmar cada exclusão, executar sequencialmente e verificar por sincronização.
-3. Evoluir o editor visual para grupos `E`/`OU` aninhados sem perder ASTs já salvas.
-
-Ao retomar, começar pelo módulo `src/modules/contact-deletion`. A migration v10 já contém
-`contact_deletion_jobs` e `contact_deletion_items`, e o provedor Google já implementa
-`getContact`/`deleteContact`; falta expor essas operações de forma segura pelo `GoogleAuthService`,
-implementar repositório/serviço/rotas, compor as dependências, criar a revisão destrutiva na UI e
-cobrir o fluxo com testes. A execução deve permanecer sequencial, nunca automática, e só aceitar
-evidências fortes (`missing_phone`, `invalid_phone` ou `not_on_whatsapp`).
+1. Evoluir o editor visual para grupos `E`/`OU` aninhados sem perder ASTs já salvas.
+2. Adaptar o follow-up para criar um rascunho editável no mesmo wizard, em vez de uma campanha já
+   preparada.
+3. Paginar o manifesto completo na interface e tornar jobs longos de exclusão retomáveis após
+   reload/reinício, com progresso assíncrono.
 
 ## Decisões e cuidados ativos
 

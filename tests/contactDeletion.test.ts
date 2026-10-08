@@ -1,0 +1,234 @@
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+import { openDatabase } from '../src/database/database.js';
+import { CampaignRepository } from '../src/modules/campaigns/CampaignRepository.js';
+import { CampaignService } from '../src/modules/campaigns/CampaignService.js';
+import { ContactDeletionRepository } from '../src/modules/contact-deletion/ContactDeletionRepository.js';
+import { ContactDeletionService } from '../src/modules/contact-deletion/ContactDeletionService.js';
+import { ContactRepository } from '../src/modules/contacts/ContactRepository.js';
+import { ContactService } from '../src/modules/contacts/ContactService.js';
+import type { GoogleAuthService } from '../src/modules/google-auth/GoogleAuthService.js';
+import { GoogleContactsRepository } from '../src/modules/google-contacts/GoogleContactsRepository.js';
+import { MediaRepository } from '../src/modules/media/MediaRepository.js';
+import { MediaService } from '../src/modules/media/MediaService.js';
+import { SettingsRepository } from '../src/modules/settings/SettingsRepository.js';
+import { SettingsService } from '../src/modules/settings/SettingsService.js';
+import type { GoogleContactRecord } from '../src/providers/google/GooglePeopleProvider.js';
+import type {
+  ConnectionListener,
+  ConnectionState,
+  DeliveryResult,
+  MediaMessage,
+  WhatsAppProvider,
+} from '../src/providers/whatsapp/WhatsAppProvider.js';
+
+class FakeWhatsApp implements WhatsAppProvider {
+  public registered = false;
+  public connect(): Promise<void> {
+    return Promise.resolve();
+  }
+  public disconnect(): Promise<void> {
+    return Promise.resolve();
+  }
+  public getConnectionState(): ConnectionState {
+    return { status: 'connected' };
+  }
+  public onConnectionState(_listener: ConnectionListener): () => void {
+    return () => undefined;
+  }
+  public hasSavedSession(): Promise<boolean> {
+    return Promise.resolve(true);
+  }
+  public isRegisteredNumber(_phone: string): Promise<boolean> {
+    return Promise.resolve(this.registered);
+  }
+  public sendText(_phone: string, _message: string): Promise<DeliveryResult> {
+    throw new Error('not used');
+  }
+  public sendMedia(_phone: string, _media: MediaMessage): Promise<DeliveryResult> {
+    throw new Error('not used');
+  }
+}
+
+function contact(resourceName: string, phones: string[], deleted = false): GoogleContactRecord {
+  return {
+    resourceName,
+    deleted,
+    displayName: 'Contato teste',
+    givenName: 'Contato',
+    middleName: '',
+    familyName: 'Teste',
+    phoneticName: '',
+    honorificPrefix: '',
+    honorificSuffix: '',
+    nickname: '',
+    fileAs: '',
+    organizationName: '',
+    organizationTitle: '',
+    organizationDepartment: '',
+    biography: '',
+    phones: phones.map((value) => ({ label: 'mobile', value, primary: true })),
+    labels: [],
+    raw: {},
+  };
+}
+
+function setup(input: {
+  reason: 'missing_phone' | 'invalid_phone' | 'not_on_whatsapp';
+  phones: string[];
+  recommendation?: 'recommended' | 'review' | 'not_recommended';
+  deleteError?: Error;
+}) {
+  const database = openDatabase(':memory:');
+  database
+    .prepare(
+      `INSERT INTO google_accounts
+        (id, google_subject, email, display_name, token_store_key)
+       VALUES (1, 'subject', 'user@example.com', 'User', 'google:subject')`,
+    )
+    .run();
+  database.prepare('INSERT INTO google_sync_state (account_id) VALUES (1)').run();
+  const googleContacts = new GoogleContactsRepository(database);
+  const current = contact('people/test', input.phones);
+  googleContacts.applyPage([
+    {
+      contact: current,
+      phones: input.phones.map((rawValue) => ({
+        label: 'mobile',
+        rawValue,
+        primary: true,
+        valid: false,
+        validationReason: 'inválido',
+      })),
+    },
+  ]);
+  const googleContactId = (
+    database
+      .prepare("SELECT id FROM google_contacts WHERE resource_name = 'people/test'")
+      .get() as {
+      id: number;
+    }
+  ).id;
+  const campaignId = Number(
+    database
+      .prepare(
+        `INSERT INTO campaigns
+          (name, message_template, delay_min_seconds, delay_max_seconds, status, selection_source)
+         VALUES ('Campanha', 'Olá', 1, 1, 'completed', 'google')`,
+      )
+      .run().lastInsertRowid,
+  );
+  const recipientId = Number(
+    database
+      .prepare(
+        `INSERT INTO campaign_recipients
+          (campaign_id, google_contact_id, resource_name_snapshot, name, phone, phone_original,
+           rendered_message, eligibility_status, result_code, result_reason,
+           deletion_recommendation, deletion_reason_code, status)
+         VALUES (?, ?, 'people/test', 'Contato teste', ?, ?, 'Olá', ?, 'validation_failure',
+           'Motivo testado', ?, ?, 'skipped')`,
+      )
+      .run(
+        campaignId,
+        googleContactId,
+        input.phones[0] ?? null,
+        input.phones[0] ?? null,
+        input.reason,
+        input.recommendation ?? 'recommended',
+        input.reason,
+      ).lastInsertRowid,
+  );
+  const contacts = new ContactService(new ContactRepository(database));
+  const campaigns = new CampaignService(
+    new CampaignRepository(database),
+    contacts,
+    new MediaService(new MediaRepository(database), '/tmp/wa-delivery-deletion-tests'),
+  );
+  let deleted = false;
+  const google = {
+    getContact: async () => (deleted ? undefined : current),
+    deleteContact: async () => {
+      if (input.deleteError) throw input.deleteError;
+      deleted = true;
+    },
+    synchronize: async () => {
+      if (deleted)
+        googleContacts.applyPage([{ contact: contact('people/test', [], true), phones: [] }]);
+      return { created: 0, updated: 1, deleted: deleted ? 1 : 0 };
+    },
+  } as unknown as GoogleAuthService;
+  const whatsapp = new FakeWhatsApp();
+  const service = new ContactDeletionService(
+    new ContactDeletionRepository(database),
+    campaigns,
+    google,
+    googleContacts,
+    whatsapp,
+    new SettingsService(new SettingsRepository(database)),
+    async () => undefined,
+  );
+  return { database, service, whatsapp, campaignId, recipientId };
+}
+
+describe('ContactDeletionService', () => {
+  it('exclui sequencialmente e confirma por sincronização uma evidência ainda válida', async () => {
+    const { service, campaignId, recipientId } = setup({
+      reason: 'invalid_phone',
+      phones: ['123'],
+    });
+    const job = await service.createAndExecute(campaignId, {
+      confirmed: true,
+      recipientIds: [recipientId],
+      filterSnapshot: { shortcut: 'invalid_phone' },
+    });
+    assert.equal(job.status, 'completed');
+    assert.equal(job.items[0]?.status, 'deleted');
+    assert.ok(job.items[0]?.verifiedAt);
+    assert.deepEqual(job.filterSnapshot, { shortcut: 'invalid_phone' });
+  });
+
+  it('revalida no WhatsApp e bloqueia quando a evidência mudou', async () => {
+    const { service, whatsapp, campaignId, recipientId } = setup({
+      reason: 'not_on_whatsapp',
+      phones: ['+55 16 99999-1111'],
+    });
+    whatsapp.registered = true;
+    const job = await service.createAndExecute(campaignId, {
+      confirmed: true,
+      recipientIds: [recipientId],
+    });
+    assert.equal(job.status, 'failed');
+    assert.equal(job.items[0]?.lastErrorCode, 'evidence_changed');
+  });
+
+  it('rejeita destinatário sem recomendação segura e exige confirmação explícita', async () => {
+    const { service, campaignId, recipientId } = setup({
+      reason: 'invalid_phone',
+      phones: ['123'],
+      recommendation: 'not_recommended',
+    });
+    await assert.rejects(
+      service.createAndExecute(campaignId, { confirmed: true, recipientIds: [recipientId] }),
+      /não possui evidência forte/,
+    );
+    await assert.rejects(
+      service.createAndExecute(campaignId, { recipientIds: [recipientId] }),
+      /Confirme explicitamente/,
+    );
+  });
+
+  it('interrompe o job em erro de autorização e preserva erro seguro', async () => {
+    const { service, campaignId, recipientId } = setup({
+      reason: 'invalid_phone',
+      phones: ['123'],
+      deleteError: new Error('Não foi possível excluir o contato Google (HTTP 403).'),
+    });
+    const job = await service.createAndExecute(campaignId, {
+      confirmed: true,
+      recipientIds: [recipientId],
+    });
+    assert.equal(job.status, 'failed');
+    assert.equal(job.items[0]?.lastErrorCode, 'google_authorization');
+    assert.doesNotMatch(job.items[0]?.lastErrorMessage ?? '', /403/);
+  });
+});

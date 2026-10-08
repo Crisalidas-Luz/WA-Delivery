@@ -23,6 +23,8 @@ import { registerGoogleRoutes } from './googleRoutes.js';
 import type { GoogleAuthService } from '../modules/google-auth/GoogleAuthService.js';
 import type { ContactSelectionService } from '../modules/contact-selection/ContactSelectionService.js';
 import { registerContactSelectionRoutes } from './contactSelectionRoutes.js';
+import type { ContactDeletionService } from '../modules/contact-deletion/ContactDeletionService.js';
+import { registerContactDeletionRoutes } from './contactDeletionRoutes.js';
 
 export interface ServerDependencies {
   whatsappProvider: WhatsAppProvider;
@@ -35,6 +37,7 @@ export interface ServerDependencies {
   backup?: BackupService;
   google?: GoogleAuthService;
   contactSelection?: ContactSelectionService;
+  contactDeletion?: ContactDeletionService;
   onRestored?: () => void;
 }
 
@@ -103,6 +106,7 @@ export async function buildServer(dependencies: ServerDependencies): Promise<Fas
   registerSettingsRoutes(server, settings);
   registerGoogleRoutes(server, dependencies.google);
   registerContactSelectionRoutes(server, dependencies.contactSelection);
+  registerContactDeletionRoutes(server, dependencies.contactDeletion);
   if (backup)
     registerBackupRoutes(server, backup, {
       ...(dependencies.onRestored ? { onRestored: dependencies.onRestored } : {}),

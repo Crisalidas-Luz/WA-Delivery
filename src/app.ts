@@ -32,6 +32,8 @@ import { GoogleContactsSyncService } from './modules/google-contacts/GoogleConta
 import { GoogleAuthService } from './modules/google-auth/GoogleAuthService.js';
 import { ContactSelectionRepository } from './modules/contact-selection/ContactSelectionRepository.js';
 import { ContactSelectionService } from './modules/contact-selection/ContactSelectionService.js';
+import { ContactDeletionRepository } from './modules/contact-deletion/ContactDeletionRepository.js';
+import { ContactDeletionService } from './modules/contact-deletion/ContactDeletionService.js';
 
 /** Lê a versão da aplicação do package.json (para metadados de backup). */
 function appVersion(): string {
@@ -52,7 +54,8 @@ const settings = new SettingsService(new SettingsRepository(database));
 const contacts = new ContactService(new ContactRepository(database), settings);
 const csvImports = new CsvImportService(contacts, settings);
 const media = new MediaService(new MediaRepository(database), resolve('data/media'));
-const google = createGoogleService();
+const googleIntegration = createGoogleService();
+const google = googleIntegration?.service;
 const contactSelection = new ContactSelectionService(new ContactSelectionRepository(database));
 const campaigns = new CampaignService(
   new CampaignRepository(database),
@@ -72,6 +75,16 @@ const queue = new CampaignQueueWorker(
   DEFAULT_RETRY_BACKOFF_CAP_MS,
   settings,
 );
+const contactDeletion = googleIntegration
+  ? new ContactDeletionService(
+      new ContactDeletionRepository(database),
+      campaigns,
+      googleIntegration.service,
+      googleIntegration.repository,
+      provider,
+      settings,
+    )
+  : undefined;
 queue.recoverInterrupted();
 await media.cleanupExpiredTemporary();
 
@@ -109,6 +122,7 @@ const server = await buildServer({
   media,
   queue,
   ...(google ? { google } : {}),
+  ...(contactDeletion ? { contactDeletion } : {}),
   contactSelection,
   backup,
   // Após restaurar, encerra para reiniciar limpo (RUN.bat/run.sh reabrem).
@@ -118,7 +132,8 @@ const server = await buildServer({
   },
 });
 
-function createGoogleService(): GoogleAuthService | undefined {
+function createGoogleService():
+  { service: GoogleAuthService; repository: GoogleContactsRepository } | undefined {
   const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim();
   if (!clientId || !clientSecret) return undefined;
@@ -130,12 +145,13 @@ function createGoogleService(): GoogleAuthService | undefined {
   const tokenStore = createGoogleTokenStore();
   if (!tokenStore) return undefined;
   const repository = new GoogleContactsRepository(database);
-  return new GoogleAuthService(
+  const service = new GoogleAuthService(
     googleProvider,
     tokenStore,
     repository,
     new GoogleContactsSyncService(repository, googleProvider, settings),
   );
+  return { service, repository };
 }
 
 function createGoogleTokenStore(): GoogleTokenStore | undefined {

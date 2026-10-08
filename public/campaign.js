@@ -46,10 +46,19 @@ const executionNotice = document.querySelector('#execution-notice');
 const followUpZone = document.querySelector('#follow-up-zone');
 const followUpButton = document.querySelector('#follow-up-campaign');
 const sourceLink = document.querySelector('#source-link');
+const contactDeletionZone = document.querySelector('#contact-deletion-zone');
+const contactDeletionSummary = document.querySelector('#contact-deletion-summary');
+const contactDeletionConfirmation = document.querySelector('#contact-deletion-confirmation');
+const deleteGoogleContacts = document.querySelector('#delete-google-contacts');
+const retryGoogleDeletions = document.querySelector('#retry-google-deletions');
+const contactDeletionResults = document.querySelector('#contact-deletion-results');
 const errorPanel = document.querySelector('#campaign-error');
 const campaignId = Number(new URLSearchParams(location.search).get('id'));
 let selectedMedia;
 let loadedCampaign;
+let campaignIsTerminal = false;
+let currentDeletionJob;
+const selectedForDeletion = new Set();
 
 function showError(text = '') {
   errorPanel.hidden = !text;
@@ -127,6 +136,23 @@ function paintRecipients() {
     phone.textContent = recipient.phone ?? recipient.phoneOriginal ?? 'Sem telefone';
     heading.append(name, phone);
 
+    if (campaignIsTerminal && canDeleteFromGoogle(recipient)) {
+      const selection = document.createElement('label');
+      selection.className = 'recipient-delete-selection';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.checked = selectedForDeletion.has(recipient.id);
+      checkbox.addEventListener('change', () => {
+        if (checkbox.checked) selectedForDeletion.add(recipient.id);
+        else selectedForDeletion.delete(recipient.id);
+        updateDeletionControls();
+      });
+      const text = document.createElement('span');
+      text.textContent = 'Selecionar para excluir do Google';
+      selection.append(checkbox, text);
+      heading.prepend(selection);
+    }
+
     const meta = document.createElement('div');
     meta.className = 'recipient-meta';
     const badge = document.createElement('span');
@@ -167,6 +193,73 @@ function paintRecipients() {
     remainder.textContent = `Mais ${filtered.length - 50} destinatário(s) neste filtro. Exporte o CSV para a lista completa.`;
     recipientList.append(remainder);
   }
+}
+
+function canDeleteFromGoogle(recipient) {
+  const reason = recipient.deletionReasonCode || recipient.eligibilityStatus;
+  return (
+    recipient.googleContactId &&
+    recipient.resourceName &&
+    recipient.deletionRecommendation !== 'not_recommended' &&
+    ['missing_phone', 'invalid_phone', 'not_on_whatsapp'].includes(reason)
+  );
+}
+
+function updateDeletionControls() {
+  if (!contactDeletionZone) return;
+  contactDeletionZone.hidden = !campaignIsTerminal || !allRecipients.some(canDeleteFromGoogle);
+  const selected = allRecipients.filter((recipient) => selectedForDeletion.has(recipient.id));
+  const groups = selected.reduce((result, recipient) => {
+    const reason = recipient.deletionReasonCode || recipient.eligibilityStatus;
+    result[reason] = (result[reason] || 0) + 1;
+    return result;
+  }, {});
+  const reasonLabels = {
+    missing_phone: 'sem telefone',
+    invalid_phone: 'telefone inválido',
+    not_on_whatsapp: 'fora do WhatsApp',
+  };
+  const detail = Object.entries(groups)
+    .map(([reason, count]) => `${count} ${reasonLabels[reason] || reason}`)
+    .join('; ');
+  contactDeletionSummary.textContent = selected.length
+    ? `${selected.length} contato(s) selecionado(s): ${detail}. A evidência será validada novamente antes de cada exclusão.`
+    : 'Nenhum contato selecionado para exclusão.';
+  deleteGoogleContacts.disabled =
+    selected.length === 0 || !contactDeletionConfirmation.checked;
+}
+
+function renderDeletionJob(job) {
+  currentDeletionJob = job;
+  selectedForDeletion.clear();
+  contactDeletionConfirmation.checked = false;
+  contactDeletionResults.replaceChildren();
+  const statusLabels = {
+    deleted: 'Exclusão aceita pelo Google',
+    already_missing: 'Contato já não existia',
+    failed: 'Falha — nenhuma exclusão realizada neste item',
+    cancelled: 'Cancelado',
+    pending: 'Pendente',
+    deleting: 'Excluindo',
+  };
+  for (const item of job.items) {
+    const article = document.createElement('article');
+    article.className = 'message-sample';
+    const heading = document.createElement('strong');
+    heading.textContent = item.displayName || item.resourceName;
+    const status = document.createElement('p');
+    status.textContent = `${statusLabels[item.status] || item.status}${item.verifiedAt ? ' — confirmado por sincronização' : item.status === 'deleted' ? ' — aguardando confirmação da sincronização' : ''}`;
+    article.append(heading, status);
+    if (item.lastErrorMessage) {
+      const error = document.createElement('p');
+      error.className = 'recipient-error';
+      error.textContent = item.lastErrorMessage;
+      article.append(error);
+    }
+    contactDeletionResults.append(article);
+  }
+  retryGoogleDeletions.hidden = !job.items.some((item) => item.status === 'failed');
+  paintRecipients();
 }
 
 function applyLockedState(campaign, recipients, summary) {
@@ -214,6 +307,8 @@ function renderProgress(progress) {
   const ready = progress.status === 'ready';
   const running = progress.status === 'running';
   const terminal = ['completed', 'cancelled', 'failed'].includes(progress.status);
+  campaignIsTerminal = terminal;
+  updateDeletionControls();
   // O checkbox de confirmação só aparece quando a campanha está pronta e ainda
   // não iniciou. Ao iniciar, ele some e o estado fica claro.
   startConfirmationLabel.hidden = !ready;
@@ -414,6 +509,55 @@ events.addEventListener('campaign-progress', (event) => {
 });
 
 if (recipientFilter) recipientFilter.addEventListener('change', paintRecipients);
+if (contactDeletionConfirmation)
+  contactDeletionConfirmation.addEventListener('change', updateDeletionControls);
+if (deleteGoogleContacts) {
+  deleteGoogleContacts.addEventListener('click', async () => {
+    const ids = [...selectedForDeletion];
+    if (!ids.length || !contactDeletionConfirmation.checked) return;
+    if (
+      !confirm(
+        `Excluir permanentemente ${ids.length} contato(s) da conta Google? A ação será auditada, mas não pode ser desfeita.`,
+      )
+    )
+      return;
+    deleteGoogleContacts.disabled = true;
+    showError();
+    try {
+      const job = await request(`/api/campaigns/${campaignId}/deletion-jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          confirmed: true,
+          recipientIds: ids,
+          filterSnapshot: { manifestFilter: recipientFilter?.value || '' },
+        }),
+      });
+      renderDeletionJob(job);
+    } catch (error) {
+      showError(error.message);
+      updateDeletionControls();
+    }
+  });
+}
+if (retryGoogleDeletions) {
+  retryGoogleDeletions.addEventListener('click', async () => {
+    if (!currentDeletionJob) return;
+    retryGoogleDeletions.disabled = true;
+    showError();
+    try {
+      renderDeletionJob(
+        await request(`/api/contact-deletion-jobs/${currentDeletionJob.id}/retry`, {
+          method: 'POST',
+        }),
+      );
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      retryGoogleDeletions.disabled = false;
+    }
+  });
+}
 if (exportAll) exportAll.setAttribute('href', `/api/campaigns/${campaignId}/export`);
 if (exportFailures)
   exportFailures.setAttribute('href', `/api/campaigns/${campaignId}/export?onlyFailures=true`);

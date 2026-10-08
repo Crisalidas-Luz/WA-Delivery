@@ -180,6 +180,15 @@ export class GoogleContactsRepository {
       .run();
   }
 
+  public isRemoteDeleted(resourceName: string): boolean {
+    const row = this.database
+      .prepare(
+        'SELECT remote_deleted FROM google_contacts WHERE account_id = 1 AND resource_name = ?',
+      )
+      .get(resourceName) as { remote_deleted: number } | undefined;
+    return row?.remote_deleted === 1;
+  }
+
   private insertContact(contact: GoogleContactRecord): number {
     const result = this.database
       .prepare(

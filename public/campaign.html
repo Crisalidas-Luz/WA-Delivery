@@ -154,6 +154,27 @@
           </div>
           <div id="recipient-list" class="message-samples"></div>
         </section>
+        <section id="contact-deletion-zone" class="review-zone danger-zone" hidden>
+          <h2>Revisar exclusões do Google Contacts</h2>
+          <p>
+            Marque individualmente apenas contatos cuja evidência justifique apagar o registro da
+            conta Google. Falhas de rede, timeout e erros transitórios não são elegíveis.
+          </p>
+          <p id="contact-deletion-summary">Nenhum contato selecionado para exclusão.</p>
+          <label class="confirmation-check">
+            <input id="contact-deletion-confirmation" type="checkbox" />
+            Entendo que esta ação apagará permanentemente os contatos selecionados da conta Google.
+          </label>
+          <div class="actions">
+            <button id="delete-google-contacts" class="danger" type="button" disabled>
+              Excluir contatos selecionados
+            </button>
+            <button id="retry-google-deletions" type="button" hidden>
+              Tentar novamente as exclusões com falha
+            </button>
+          </div>
+          <div id="contact-deletion-results" class="message-samples"></div>
+        </section>
         <section id="execution-zone" class="review-zone execution-zone" hidden>
           <h2>Execução da campanha</h2>
           <p id="execution-notice" class="notice" hidden></p>
