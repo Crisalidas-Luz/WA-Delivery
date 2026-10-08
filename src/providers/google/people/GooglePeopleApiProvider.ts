@@ -88,7 +88,8 @@ export class GooglePeopleApiProvider implements GooglePeopleProvider {
       }),
     });
     const body = await jsonResponse(response, 'Não foi possível concluir o login Google.');
-    const tokens = tokenSet(body);
+    const tokens = tokenSet(body, this.now());
+    assertContactsScope(tokens.scope);
     const account = await this.loadIdentity(tokens.accessToken);
     return { account, tokens };
   }
@@ -106,8 +107,10 @@ export class GooglePeopleApiProvider implements GooglePeopleProvider {
       }),
     });
     const body = await jsonResponse(response, 'Não foi possível renovar a sessão Google.');
-    const refreshed = tokenSet(body);
-    return { ...refreshed, refreshToken: tokens.refreshToken };
+    const refreshed = tokenSet(body, this.now());
+    const scope = refreshed.scope.length > 0 ? refreshed.scope : tokens.scope;
+    assertContactsScope(scope);
+    return { ...refreshed, refreshToken: tokens.refreshToken, scope };
   }
 
   public async revoke(tokens: GoogleTokenSet): Promise<void> {
@@ -208,15 +211,23 @@ export class GooglePeopleApiProvider implements GooglePeopleProvider {
   }
 }
 
-function tokenSet(body: Record<string, unknown>): GoogleTokenSet {
+function tokenSet(body: Record<string, unknown>, nowMs: number): GoogleTokenSet {
   const accessToken = requiredString(body, 'access_token');
   const expiresIn = typeof body.expires_in === 'number' ? body.expires_in : undefined;
   return {
     accessToken,
     ...(typeof body.refresh_token === 'string' ? { refreshToken: body.refresh_token } : {}),
-    ...(expiresIn ? { expiresAt: new Date(Date.now() + expiresIn * 1000).toISOString() } : {}),
+    ...(expiresIn ? { expiresAt: new Date(nowMs + expiresIn * 1000).toISOString() } : {}),
     scope: typeof body.scope === 'string' ? body.scope.split(/\s+/).filter(Boolean) : [],
   };
+}
+
+function assertContactsScope(scope: string[]): void {
+  if (!scope.includes(GOOGLE_CONTACTS_SCOPE)) {
+    throw new Error(
+      'A autorização Google não concedeu acesso aos contatos. Tente conectar novamente.',
+    );
+  }
 }
 
 async function jsonResponse(response: Response, message: string): Promise<Record<string, unknown>> {

@@ -387,12 +387,23 @@ Reconciliação segura da sincronização completa:
 - o contador `deleted` inclui os ausentes reconciliados. Teste cobre falha intermediária, estado
   `failed`, recuperação e marcação somente após sucesso.
 
+Endurecimento do OAuth Google:
+
+- a troca do código agora exige que a resposta tenha concedido explicitamente o escopo de contatos;
+  login sem essa permissão é recusado com orientação segura;
+- refresh preserva o escopo anterior quando o Google o omite e também recusa uma resposta que
+  explicitamente remova a permissão necessária;
+- o cálculo de expiração usa o relógio injetado do provedor, permitindo comportamento determinístico
+  e teste real do TTL do `state`;
+- testes cobrem callback negado, state expirado sem chamada ao endpoint de token e autorização sem
+  escopo, comprovando que access/refresh tokens não aparecem na mensagem de erro.
+
 ## Validações da última etapa
 
 - `npm.cmd run typecheck`: passou.
 - `npm.cmd run lint`: passou.
 - `npm.cmd run format`: passou e normalizou os arquivos alterados.
-- `npm.cmd test`: 186 testes passaram, 0 falharam.
+- `npm.cmd test`: 188 testes passaram, 0 falharam.
 - `npm.cmd run build`: passou.
 - `node --check public/settings.js` e `node --check public/campaign.js`: passaram.
 - Observação do ambiente: dentro do sandbox, o loader `tsx` falhou em `uv_os_get_passwd` com
@@ -404,7 +415,7 @@ Reconciliação segura da sincronização completa:
 
 1. Revisar acessibilidade/progresso de operações longas e a cobertura do fluxo visual.
 2. Auditar requisitos do `AGENTS.md` ainda sem evidência direta e ampliar testes de rotas/UI.
-3. Ampliar testes de OAuth (callback negado/expirado, token inválido e não vazamento).
+3. Revisar proteção de payload, paginação e progresso visual da sincronização/exclusão.
 4. Executar QA real de OAuth, sincronização, envio e exclusão com contas de teste antes do merge.
 
 ## Decisões e cuidados ativos

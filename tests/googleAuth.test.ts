@@ -151,6 +151,12 @@ describe('rotas Google', () => {
       assert.equal(start.json().state, 'state');
       const callback = await server.inject({ method: 'GET', url: '/api/google/oauth/callback' });
       assert.equal(callback.statusCode, 400);
+      const denied = await server.inject({
+        method: 'GET',
+        url: '/api/google/oauth/callback?error=access_denied',
+      });
+      assert.equal(denied.statusCode, 400);
+      assert.match(denied.json().message, /cancelado|recusado/);
     } finally {
       await server.close();
       database.close();

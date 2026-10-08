@@ -55,6 +55,46 @@ describe('GooglePeopleApiProvider OAuth', () => {
     await assert.rejects(() => provider.finishAuthorization('code', 'unknown'), /expirou|inválida/);
     assert.equal(called, false);
   });
+
+  it('rejeita state expirado sem trocar o código por tokens', async () => {
+    let now = 1_000;
+    let called = false;
+    const provider = new GooglePeopleApiProvider(
+      { ...config, authorizationTtlMs: 100 },
+      (async () => {
+        called = true;
+        return Response.json({});
+      }) as typeof fetch,
+      () => now,
+    );
+    const start = await provider.createAuthorizationRequest();
+    now += 101;
+    await assert.rejects(() => provider.finishAuthorization('code', start.state), /expirou/);
+    assert.equal(called, false);
+  });
+
+  it('recusa autorização sem o escopo de contatos sem expor os tokens', async () => {
+    const accessToken = 'access-token-super-secreto';
+    const provider = new GooglePeopleApiProvider(config, (async (input: string | URL | Request) => {
+      if (String(input).includes('/token')) {
+        return Response.json({
+          access_token: accessToken,
+          refresh_token: 'refresh-token-super-secreto',
+          expires_in: 3600,
+          scope: 'openid email profile',
+        });
+      }
+      return Response.json({ sub: 'subject', email: 'user@example.com' });
+    }) as typeof fetch);
+    const start = await provider.createAuthorizationRequest();
+    await assert.rejects(
+      () => provider.finishAuthorization('code', start.state),
+      (error: unknown) =>
+        error instanceof Error &&
+        /acesso aos contatos/.test(error.message) &&
+        !error.message.includes(accessToken),
+    );
+  });
 });
 
 describe('GooglePeopleApiProvider contatos', () => {
