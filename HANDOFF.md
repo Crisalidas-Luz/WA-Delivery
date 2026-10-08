@@ -11,8 +11,8 @@ pendências e próximo passo. Não substituir o plano completo de produto em `AG
 - Branch de desenvolvimento: `feat/google-contacts-campaign-flow`
 - Base: `main` no commit `cfc3881`
 - Checkpoint anterior à retomada: `2eb690b` (`docs: checkpoint paused development state`).
-- Estado da sessão: retomada; primeiro bloco da revisão de acessibilidade/progresso concluído
-- Etapa de retomada: auditoria final dos requisitos e ampliação da cobertura de rotas/UI
+- Estado da sessão: desenvolvimento local concluído; aguardando QA manual do usuário
+- Etapa de retomada: QA real de OAuth, sincronização, envio e exclusão
 - Merge para `main`: proibido até validação integral e aprovação do usuário
 
 ## Progresso
@@ -487,10 +487,10 @@ Progresso quantitativo da sincronização:
 
 ## Próximo passo
 
-1. Auditar requisitos do `AGENTS.md` ainda sem evidência direta e ampliar testes de rotas/UI.
-2. Revisar proteção de payload, paginação e progresso visual da sincronização/exclusão.
-3. Executar QA visual em um ambiente com navegador disponível.
-4. Executar QA real de OAuth, sincronização, envio e exclusão com contas de teste antes do merge.
+1. Executar QA visual em um ambiente com navegador disponível.
+2. Executar QA real de OAuth, sincronização, envio e exclusão com contas de teste.
+3. Corrigir somente problemas encontrados no QA e repetir `npm.cmd run check`/`npm.cmd audit`.
+4. Fazer merge para `main` apenas depois da validação integral e aprovação explícita do usuário.
 
 ## Decisões e cuidados ativos
 
