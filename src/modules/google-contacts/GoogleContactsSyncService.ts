@@ -1,5 +1,6 @@
 import type { SettingsService } from '../settings/SettingsService.js';
 import { normalizePhone } from '../contacts/phone.js';
+import { maskSensitive } from '../../shared/logger.js';
 import {
   GoogleSyncTokenExpiredError,
   type GooglePeopleProvider,
@@ -11,6 +12,8 @@ import {
 } from './GoogleContactsRepository.js';
 
 export class GoogleContactsSyncService {
+  private activeSync: Promise<{ created: number; updated: number; deleted: number }> | undefined;
+
   public constructor(
     private readonly repository: GoogleContactsRepository,
     private readonly provider: GooglePeopleProvider,
@@ -18,6 +21,19 @@ export class GoogleContactsSyncService {
   ) {}
 
   public async sync(
+    tokens: GoogleTokenSet,
+  ): Promise<{ created: number; updated: number; deleted: number }> {
+    if (this.activeSync) throw new GoogleSyncAlreadyRunningError();
+    const operation = this.executeSync(tokens);
+    this.activeSync = operation;
+    try {
+      return await operation;
+    } finally {
+      if (this.activeSync === operation) this.activeSync = undefined;
+    }
+  }
+
+  private async executeSync(
     tokens: GoogleTokenSet,
   ): Promise<{ created: number; updated: number; deleted: number }> {
     const state = this.repository.syncState();
@@ -30,7 +46,7 @@ export class GoogleContactsSyncService {
       }
       this.repository.failSync(
         'SYNC_FAILED',
-        error instanceof Error ? error.message : 'Falha desconhecida.',
+        maskSensitive(error instanceof Error ? error.message : 'Falha desconhecida.'),
       );
       throw error;
     }
@@ -84,5 +100,14 @@ export class GoogleContactsSyncService {
         };
       }
     });
+  }
+}
+
+export class GoogleSyncAlreadyRunningError extends Error {
+  public readonly statusCode = 409;
+
+  public constructor() {
+    super('Já existe uma sincronização do Google Contacts em andamento.');
+    this.name = 'GoogleSyncAlreadyRunningError';
   }
 }

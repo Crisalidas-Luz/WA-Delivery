@@ -15,6 +15,13 @@ export interface GoogleConnectionStatus {
   sync: {
     status: 'idle' | 'running' | 'completed' | 'failed';
     type?: 'full' | 'incremental';
+    lastFullSyncAt?: string;
+    lastIncrementalSyncAt?: string;
+    updatedAt?: string;
+    created: number;
+    updated: number;
+    deleted: number;
+    error?: { code: string; message: string };
   };
 }
 
@@ -47,7 +54,23 @@ export class GoogleAuthService {
         : {}),
       sync: {
         status: sync?.status ?? 'idle',
+        created: sync?.createdCount ?? 0,
+        updated: sync?.updatedCount ?? 0,
+        deleted: sync?.deletedCount ?? 0,
         ...(sync?.lastSyncType ? { type: sync.lastSyncType } : {}),
+        ...(sync?.lastFullSyncAt ? { lastFullSyncAt: sync.lastFullSyncAt } : {}),
+        ...(sync?.lastIncrementalSyncAt
+          ? { lastIncrementalSyncAt: sync.lastIncrementalSyncAt }
+          : {}),
+        ...(sync?.updatedAt ? { updatedAt: sync.updatedAt } : {}),
+        ...(sync?.lastErrorCode
+          ? {
+              error: {
+                code: sync.lastErrorCode,
+                message: sync.lastErrorMessage ?? 'A sincronização falhou.',
+              },
+            }
+          : {}),
       },
     };
   }
@@ -65,6 +88,13 @@ export class GoogleAuthService {
     } catch (error) {
       await this.tokenStore.delete(tokenStoreKey);
       throw error;
+    }
+    // A primeira sincronização faz parte da conclusão do login. Se ela falhar, a conta continua
+    // conectada e o estado persistido permite explicar o erro e repetir pela interface.
+    try {
+      await this.synchronize();
+    } catch {
+      // GoogleContactsSyncService já persistiu o erro seguro para apresentação e diagnóstico.
     }
     return this.status();
   }

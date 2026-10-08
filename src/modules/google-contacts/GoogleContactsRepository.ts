@@ -8,6 +8,14 @@ export interface GoogleSyncState {
   syncToken?: string;
   status: 'idle' | 'running' | 'completed' | 'failed';
   lastSyncType?: 'full' | 'incremental';
+  lastFullSyncAt?: string;
+  lastIncrementalSyncAt?: string;
+  lastErrorCode?: string;
+  lastErrorMessage?: string;
+  createdCount: number;
+  updatedCount: number;
+  deletedCount: number;
+  updatedAt: string;
 }
 
 export interface StoredGoogleAccount {
@@ -52,7 +60,9 @@ export class GoogleContactsRepository {
   public syncState(): GoogleSyncState | undefined {
     const row = this.database
       .prepare(
-        `SELECT sync_token, status, last_sync_type
+        `SELECT sync_token, status, last_sync_type, last_full_sync_at,
+          last_incremental_sync_at, last_error_code, last_error_message,
+          created_count, updated_count, deleted_count, updated_at
          FROM google_sync_state WHERE account_id = 1`,
       )
       .get() as
@@ -60,13 +70,31 @@ export class GoogleContactsRepository {
           sync_token: string | null;
           status: GoogleSyncState['status'];
           last_sync_type: string | null;
+          last_full_sync_at: string | null;
+          last_incremental_sync_at: string | null;
+          last_error_code: string | null;
+          last_error_message: string | null;
+          created_count: number;
+          updated_count: number;
+          deleted_count: number;
+          updated_at: string;
         }
       | undefined;
     if (!row) return undefined;
     return {
       status: row.status,
+      createdCount: row.created_count,
+      updatedCount: row.updated_count,
+      deletedCount: row.deleted_count,
+      updatedAt: row.updated_at,
       ...(row.sync_token ? { syncToken: row.sync_token } : {}),
       ...(row.last_sync_type ? { lastSyncType: row.last_sync_type as 'full' | 'incremental' } : {}),
+      ...(row.last_full_sync_at ? { lastFullSyncAt: row.last_full_sync_at } : {}),
+      ...(row.last_incremental_sync_at
+        ? { lastIncrementalSyncAt: row.last_incremental_sync_at }
+        : {}),
+      ...(row.last_error_code ? { lastErrorCode: row.last_error_code } : {}),
+      ...(row.last_error_message ? { lastErrorMessage: row.last_error_message } : {}),
     };
   }
 

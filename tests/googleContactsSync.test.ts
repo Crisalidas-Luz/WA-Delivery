@@ -94,6 +94,27 @@ function setup() {
 }
 
 describe('GoogleContactsSyncService', () => {
+  it('recusa iniciar uma segunda sincronização enquanto a primeira está em andamento', async () => {
+    const { database, provider, service } = setup();
+    let releasePage: (() => void) | undefined;
+    provider.listContacts = async (_tokens, input) => {
+      provider.calls.push(input);
+      await new Promise<void>((resolve) => {
+        releasePage = resolve;
+      });
+      return { contacts: [], nextSyncToken: 'sync-concurrent' };
+    };
+    try {
+      const first = service.sync(TOKENS);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await assert.rejects(service.sync(TOKENS), /sincronização.*em andamento/i);
+      releasePage?.();
+      await first;
+    } finally {
+      database.close();
+    }
+  });
+
   it('sincroniza todas as páginas e persiste telefones e labels', async () => {
     const { database, repository, provider, service } = setup();
     try {

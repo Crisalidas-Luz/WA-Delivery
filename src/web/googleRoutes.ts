@@ -3,7 +3,12 @@ import type { GoogleAuthService } from '../modules/google-auth/GoogleAuthService
 
 export function registerGoogleRoutes(server: FastifyInstance, google?: GoogleAuthService): void {
   server.get('/api/google/status', async () => {
-    if (!google) return { configured: false, connected: false, sync: { status: 'idle' } };
+    if (!google)
+      return {
+        configured: false,
+        connected: false,
+        sync: { status: 'idle', created: 0, updated: 0, deleted: 0 },
+      };
     return google.status();
   });
 

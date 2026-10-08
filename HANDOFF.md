@@ -286,12 +286,24 @@ Tentativas, retenção e navegação do fluxo:
 - as rotas de jobs de exclusão agora têm cobertura HTTP para criação assíncrona, consulta direta,
   consulta do job mais recente, repetição, ID inválido e integração não configurada.
 
+Sincronização Google observável e exclusiva:
+
+- concluir o OAuth agora executa automaticamente a primeira sincronização; se a People API falhar,
+  a conta permanece conectada e o erro fica persistido para exibição e nova tentativa;
+- o serviço impede duas sincronizações simultâneas na mesma instalação e responde conflito para a
+  segunda solicitação, sem alterar o estado da operação em andamento;
+- `/api/google/status` agora expõe tipo, horários da última sincronização completa/incremental,
+  contadores, atualização do estado e erro mascarado;
+- a tela de configurações mostra a última conclusão e seus contadores, desabilita nova solicitação
+  enquanto o estado está em execução e informa que a sincronização inicial foi processada;
+- mensagens de falha persistidas passam pelo mascaramento de telefones e possíveis credenciais.
+
 ## Validações da última etapa
 
 - `npm.cmd run typecheck`: passou.
 - `npm.cmd run lint`: passou.
 - `npm.cmd run format`: passou e normalizou os arquivos alterados.
-- `npm.cmd test`: 179 testes passaram, 0 falharam.
+- `npm.cmd test`: 180 testes passaram, 0 falharam.
 - `npm.cmd run build`: passou.
 - `node --check public/settings.js` e `node --check public/campaign.js`: passaram.
 - Observação do ambiente: dentro do sandbox, o loader `tsx` falhou em `uv_os_get_passwd` com
@@ -301,10 +313,9 @@ Tentativas, retenção e navegação do fluxo:
 
 ## Próximo passo
 
-1. Fazer a sincronização inicial automaticamente depois do primeiro OAuth e impedir sincronizações
-   concorrentes.
-2. Expor no status Google os dados da última sincronização e melhorar o progresso exibido na UI.
-3. Melhorar filtros/ordenação do manifesto e a edição de seleções Google em rascunhos existentes.
+1. Melhorar filtros, busca e ordenação do manifesto persistido.
+2. Permitir editar a seleção Google de um rascunho existente sem criar outra campanha.
+3. Auditar estados `already_missing` em corridas de exclusão e feedback de retomada da fila.
 4. Executar QA real de OAuth, sincronização, envio e exclusão com contas de teste antes do merge.
 
 ## Decisões e cuidados ativos

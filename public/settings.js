@@ -122,7 +122,13 @@ async function loadGoogleStatus() {
     }
     googleSyncStatus.hidden = !state.connected;
     if (state.connected) {
-      googleSyncStatus.textContent = `Sincronização: ${state.sync.status}${state.sync.type ? ` (${state.sync.type})` : ''}.`;
+      const latestAt = state.sync.lastIncrementalSyncAt || state.sync.lastFullSyncAt;
+      const details = latestAt
+        ? ` Última conclusão: ${new Date(`${latestAt}Z`).toLocaleString()}. ${state.sync.created} novo(s), ${state.sync.updated} atualizado(s), ${state.sync.deleted} removido(s).`
+        : '';
+      const failure = state.sync.error ? ` ${state.sync.error.message}` : '';
+      googleSyncStatus.textContent = `Sincronização: ${state.sync.status}${state.sync.type ? ` (${state.sync.type})` : ''}.${details}${failure}`;
+      googleSync.disabled = state.sync.status === 'running';
     }
   } catch (error) {
     showGoogleError(`Não foi possível consultar o Google Contacts: ${error.message}`);
@@ -185,7 +191,7 @@ googleDisconnect.addEventListener('click', async () => {
 });
 
 if (new URLSearchParams(location.search).get('google') === 'connected') {
-  googleSuccess.textContent = 'Conta Google conectada. Sincronize os contatos para continuar.';
+  googleSuccess.textContent = 'Conta Google conectada. A sincronização inicial foi processada.';
   googleSuccess.hidden = false;
   history.replaceState({}, '', '/settings.html');
 }

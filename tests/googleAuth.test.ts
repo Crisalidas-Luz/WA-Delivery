@@ -33,6 +33,7 @@ class MemoryTokenStore implements GoogleTokenStore {
 class AuthProvider implements GooglePeopleProvider {
   public revoked = 0;
   public refreshed = 0;
+  public listed = 0;
   public async createAuthorizationRequest(): Promise<GoogleOAuthStart> {
     return {
       authorizationUrl: 'https://accounts.example/auth',
@@ -69,6 +70,7 @@ class AuthProvider implements GooglePeopleProvider {
     _tokens: GoogleTokenSet,
     _input: ListGoogleContactsInput,
   ): Promise<GoogleContactsPage> {
+    this.listed += 1;
     return { contacts: [], nextSyncToken: 'sync' };
   }
   public async getContact(): Promise<GoogleContactRecord | undefined> {
@@ -97,7 +99,10 @@ describe('GoogleAuthService', () => {
     try {
       await service.finishAuthorization('code', 'state');
       assert.equal((await service.status()).connected, true);
-      assert.equal(store.values.get('google:sub')?.accessToken, 'old');
+      assert.equal(provider.listed, 1);
+      assert.equal(provider.refreshed, 1);
+      assert.equal(store.values.get('google:sub')?.accessToken, 'new');
+      assert.equal((await service.status()).sync.status, 'completed');
       await service.synchronize();
       assert.equal(provider.refreshed, 1);
       assert.equal(store.values.get('google:sub')?.accessToken, 'new');
@@ -129,7 +134,7 @@ describe('rotas Google', () => {
     assert.deepEqual(status.json(), {
       configured: false,
       connected: false,
-      sync: { status: 'idle' },
+      sync: { status: 'idle', created: 0, updated: 0, deleted: 0 },
     });
     const start = await server.inject({ method: 'POST', url: '/api/google/oauth/start' });
     assert.equal(start.statusCode, 503);
