@@ -301,6 +301,13 @@ describe('servidor local', () => {
     assert.equal(prepared.json().campaign.status, 'ready');
     assert.equal(prepared.json().recipients.length, 2);
     assert.equal(prepared.json().recipients[0].renderedMessage, 'Olá Ana!');
+    const manifest = await server.inject({
+      method: 'GET',
+      url: `/api/campaigns/${draft.json().id}/manifest`,
+    });
+    assert.equal(manifest.statusCode, 200);
+    assert.equal(manifest.json().summary.selected, 2);
+    assert.equal(manifest.json().summary.eligible, 2);
     assert.equal(provider.connectCalls, 0);
     await server.close();
   });
@@ -387,7 +394,11 @@ describe('servidor local', () => {
     assert.equal(csv.statusCode, 200);
     assert.ok(csv.headers['content-type']?.includes('text/csv'));
     assert.ok(csv.headers['content-disposition']?.includes(`campanha-${id}.csv`));
-    assert.ok(csv.body.startsWith('nome,telefone,status,tentativas,enviado_em,ultimo_erro'));
+    assert.ok(
+      csv.body.startsWith(
+        'nome,telefone,lote,elegibilidade,resultado,motivo,status,tentativas,envio_aceito_em,recomendacao_exclusao,ultimo_erro',
+      ),
+    );
 
     const failures = await server.inject({
       method: 'GET',

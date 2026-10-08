@@ -11,6 +11,7 @@ import { deletionRecommendationFor, type RecipientEligibility } from './campaign
 import {
   CampaignValidationError,
   type CampaignComposerInput,
+  type CampaignManifest,
   type CampaignRecipientSnapshot,
   type CampaignSimulation,
   type CampaignSummary,
@@ -280,6 +281,37 @@ export class CampaignService {
     return this.repository.listRecipients(id);
   }
 
+  public manifest(id: number): CampaignManifest | undefined {
+    const items = this.listRecipients(id);
+    if (items === undefined) return undefined;
+    return {
+      campaignId: id,
+      generatedAt: new Date().toISOString(),
+      summary: {
+        selected: items.length,
+        eligible: items.filter((item) => item.eligibilityStatus === 'eligible').length,
+        ineligible: items.filter((item) => item.eligibilityStatus !== 'eligible').length,
+        accepted: items.filter((item) => item.resultCode === 'accepted').length,
+        permanentFailures: items.filter((item) => item.resultCode === 'permanent_failure').length,
+        transientFailuresExhausted: items.filter(
+          (item) => item.resultCode === 'transient_failure_exhausted',
+        ).length,
+        notOnWhatsApp: items.filter((item) => item.eligibilityStatus === 'not_on_whatsapp').length,
+        missingPhone: items.filter((item) => item.eligibilityStatus === 'missing_phone').length,
+        invalidPhone: items.filter((item) => item.eligibilityStatus === 'invalid_phone').length,
+        duplicatePhone: items.filter((item) => item.eligibilityStatus === 'duplicate_phone').length,
+        optedOut: items.filter((item) => item.eligibilityStatus === 'opted_out').length,
+        totalAttempts: items.reduce((total, item) => total + item.attemptCount, 0),
+        recommendedForDeletion: items.filter(
+          (item) => item.deletionRecommendation === 'recommended',
+        ).length,
+        recommendedForReview: items.filter((item) => item.deletionRecommendation === 'review')
+          .length,
+      },
+      items,
+    };
+  }
+
   /**
    * Gera um relatório CSV dos destinatários da campanha. Quando `onlyFailures`
    * é verdadeiro, inclui apenas os destinatários com falha ou ignorados
@@ -291,11 +323,35 @@ export class CampaignService {
     const rows = onlyFailures
       ? recipients.filter((r) => r.status === 'failed' || r.status === 'skipped')
       : recipients;
-    const header = ['nome', 'telefone', 'status', 'tentativas', 'enviado_em', 'ultimo_erro'];
+    const header = [
+      'nome',
+      'telefone',
+      'lote',
+      'elegibilidade',
+      'resultado',
+      'motivo',
+      'status',
+      'tentativas',
+      'envio_aceito_em',
+      'recomendacao_exclusao',
+      'ultimo_erro',
+    ];
     const lines = [header.map(csvCell).join(',')];
     for (const r of rows) {
       lines.push(
-        [r.name, r.phone ?? '', r.status, String(r.attemptCount), r.sentAt ?? '', r.lastError ?? '']
+        [
+          r.name,
+          r.phone ?? r.phoneOriginal ?? '',
+          String(r.batchNumber),
+          r.eligibilityStatus,
+          r.resultCode ?? '',
+          r.resultReason ?? '',
+          r.status,
+          String(r.attemptCount),
+          r.sentAt ?? '',
+          r.deletionRecommendation,
+          r.lastError ?? '',
+        ]
           .map(csvCell)
           .join(','),
       );

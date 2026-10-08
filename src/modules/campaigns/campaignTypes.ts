@@ -106,6 +106,28 @@ export interface CampaignRecipientSnapshot {
   updatedAt?: string;
 }
 
+export interface CampaignManifest {
+  campaignId: number;
+  generatedAt: string;
+  summary: {
+    selected: number;
+    eligible: number;
+    ineligible: number;
+    accepted: number;
+    permanentFailures: number;
+    transientFailuresExhausted: number;
+    notOnWhatsApp: number;
+    missingPhone: number;
+    invalidPhone: number;
+    duplicatePhone: number;
+    optedOut: number;
+    totalAttempts: number;
+    recommendedForDeletion: number;
+    recommendedForReview: number;
+  };
+  items: CampaignRecipientSnapshot[];
+}
+
 export class CampaignValidationError extends Error {
   public constructor(public readonly issues: Array<{ path: string; message: string }>) {
     super('Os dados da campanha são inválidos.');

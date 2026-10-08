@@ -106,6 +106,14 @@ export function registerCampaignRoutes(
     },
   );
 
+  server.get<{ Params: { id: string } }>('/api/campaigns/:id/manifest', async (request, reply) => {
+    const id = Number(request.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      return reply.code(400).send({ message: 'Identificador da campanha inválido.' });
+    }
+    return campaigns.manifest(id) ?? reply.code(404).send({ message: 'Campanha não encontrada.' });
+  });
+
   server.get<{ Params: { id: string }; Querystring: { onlyFailures?: string } }>(
     '/api/campaigns/:id/export',
     async (request, reply) => {

@@ -23,6 +23,7 @@ function setup() {
     ],
   });
   return {
+    database,
     list,
     contacts,
     campaigns: new CampaignService(
@@ -353,6 +354,49 @@ describe('CampaignService', () => {
 });
 
 describe('CampaignService.exportRecipientsCsv', () => {
+  it('gera manifesto estruturado com resultados, tentativas e recomendações', () => {
+    const { database, list, campaigns } = setup();
+    const draft = campaigns.createDraft({
+      name: 'Manifesto',
+      contactListId: list.id,
+      messageTemplate: 'Olá {{nome}}',
+      delayMinSeconds: 1,
+      delayMaxSeconds: 1,
+    });
+    campaigns.prepareDraft(draft.id, true);
+    const recipients = campaigns.listRecipients(draft.id) ?? [];
+    database
+      .prepare(
+        `UPDATE campaign_recipients SET status = 'sent', result_code = 'accepted',
+          result_reason = 'Aceito', attempt_count = 1 WHERE id = ?`,
+      )
+      .run(recipients[0]!.id);
+    database
+      .prepare(
+        `UPDATE campaign_recipients SET status = 'failed', result_code = 'permanent_failure',
+          result_reason = 'Falha permanente', attempt_count = 2 WHERE id = ?`,
+      )
+      .run(recipients[1]!.id);
+    database
+      .prepare(
+        `UPDATE campaign_recipients SET status = 'skipped', eligibility_status = 'not_on_whatsapp',
+          result_code = 'validation_failure', result_reason = 'Fora do WhatsApp', attempt_count = 1,
+          deletion_recommendation = 'recommended', deletion_reason_code = 'not_on_whatsapp'
+         WHERE id = ?`,
+      )
+      .run(recipients[2]!.id);
+
+    const manifest = campaigns.manifest(draft.id);
+    assert.equal(manifest?.summary.selected, 3);
+    assert.equal(manifest?.summary.accepted, 1);
+    assert.equal(manifest?.summary.permanentFailures, 1);
+    assert.equal(manifest?.summary.notOnWhatsApp, 1);
+    assert.equal(manifest?.summary.totalAttempts, 4);
+    assert.equal(manifest?.summary.recommendedForDeletion, 1);
+    assert.match(campaigns.exportRecipientsCsv(draft.id) ?? '', /envio_aceito_em/);
+    database.close();
+  });
+
   function build() {
     const database = openDatabase(':memory:');
     const contacts = new ContactService(new ContactRepository(database));
@@ -385,7 +429,10 @@ describe('CampaignService.exportRecipientsCsv', () => {
       const csv = campaigns.exportRecipientsCsv(draft.id);
       assert.ok(csv);
       const lines = csv.trim().split('\r\n');
-      assert.equal(lines[0], 'nome,telefone,status,tentativas,enviado_em,ultimo_erro');
+      assert.equal(
+        lines[0],
+        'nome,telefone,lote,elegibilidade,resultado,motivo,status,tentativas,envio_aceito_em,recomendacao_exclusao,ultimo_erro',
+      );
       assert.equal(lines.length, 3); // header + 2 destinatários
       assert.ok(lines.some((l) => l.startsWith('"Maria, teste"'))); // escapa vírgula
     } finally {

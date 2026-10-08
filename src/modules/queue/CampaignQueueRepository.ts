@@ -28,7 +28,10 @@ export class CampaignQueueRepository {
         this.database
           .prepare(
             `
-        UPDATE campaign_recipients SET status = 'failed', last_error = ?, updated_at = CURRENT_TIMESTAMP
+        UPDATE campaign_recipients SET status = 'failed', last_error = ?,
+          result_code = 'transient_failure_exhausted',
+          result_reason = 'A execução foi interrompida e o envio não será repetido automaticamente.',
+          deletion_recommendation = 'not_recommended', updated_at = CURRENT_TIMESTAMP
         WHERE status = 'sending'
       `,
           )
@@ -107,6 +110,8 @@ export class CampaignQueueRepository {
       .prepare(
         `
       UPDATE campaign_recipients SET status = 'skipped', last_error = 'Campanha cancelada.',
+        result_code = 'skipped_cancelled', result_reason = 'A campanha foi cancelada pelo usuário.',
+        deletion_recommendation = 'not_recommended', deletion_reason_code = NULL,
         updated_at = CURRENT_TIMESTAMP WHERE campaign_id = ? AND status = 'pending'
     `,
       )
@@ -246,18 +251,42 @@ export class CampaignQueueRepository {
     attemptId: number,
     recipientId: number,
     outcome: 'sent' | 'failed' | 'skipped',
-    details?: { messageId?: string; error?: string; kind?: 'transient' | 'permanent' },
+    details?: {
+      messageId?: string;
+      error?: string;
+      kind?: 'transient' | 'permanent';
+      resultCode?: string;
+      resultReason?: string;
+      eligibilityStatus?: CampaignRecipientSnapshot['eligibilityStatus'];
+      deletionRecommendation?: CampaignRecipientSnapshot['deletionRecommendation'];
+      deletionReasonCode?: string;
+    },
   ): void {
     this.database.exec('BEGIN IMMEDIATE');
     try {
       this.database
         .prepare(
           `
-        UPDATE campaign_recipients SET status = ?, message_id = ?, sent_at = CASE WHEN ? = 'sent' THEN CURRENT_TIMESTAMP ELSE NULL END,
-          last_error = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+        UPDATE campaign_recipients SET status = ?, message_id = ?,
+          sent_at = CASE WHEN ? = 'sent' THEN CURRENT_TIMESTAMP ELSE NULL END,
+          last_error = ?, result_code = ?, result_reason = ?,
+          eligibility_status = COALESCE(?, eligibility_status),
+          deletion_recommendation = COALESCE(?, deletion_recommendation),
+          deletion_reason_code = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
       `,
         )
-        .run(outcome, details?.messageId ?? null, outcome, details?.error ?? null, recipientId);
+        .run(
+          outcome,
+          details?.messageId ?? null,
+          outcome,
+          details?.error ?? null,
+          details?.resultCode ?? null,
+          details?.resultReason ?? null,
+          details?.eligibilityStatus ?? null,
+          details?.deletionRecommendation ?? null,
+          details?.deletionReasonCode ?? null,
+          recipientId,
+        );
       this.database
         .prepare(
           `

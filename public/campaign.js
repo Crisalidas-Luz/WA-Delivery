@@ -87,22 +87,35 @@ function renderMedia() {
 const RECIPIENT_STATUS_LABELS = {
   pending: 'Pendente',
   sending: 'Enviando',
-  sent: 'Enviado',
+  sent: 'Envio aceito',
   failed: 'Falha',
   skipped: 'Ignorado',
 };
 let allRecipients = [];
+let manifestSummary;
 
-function renderRecipients(recipients) {
+function renderRecipients(recipients, summary) {
   allRecipients = recipients;
+  if (summary) manifestSummary = summary;
   paintRecipients();
   recipientReview.hidden = false;
 }
 
 function paintRecipients() {
   const filter = recipientFilter?.value || '';
-  const filtered = filter ? allRecipients.filter((r) => r.status === filter) : allRecipients;
-  recipientSummary.textContent = `${allRecipients.length} destinatário(s) nesta campanha (lista fixada no preparo). Exibindo ${filtered.length}.`;
+  const [filterKind, filterValue] = filter.split(':');
+  const filtered = filter
+    ? allRecipients.filter((recipient) => {
+        if (filterKind === 'status') return recipient.status === filterValue;
+        if (filterKind === 'eligibility') return recipient.eligibilityStatus === filterValue;
+        if (filterKind === 'recommendation')
+          return recipient.deletionRecommendation === filterValue;
+        return recipient.status === filter;
+      })
+    : allRecipients;
+  recipientSummary.textContent = manifestSummary
+    ? `${manifestSummary.selected} selecionados; ${manifestSummary.accepted} envios aceitos; ${manifestSummary.permanentFailures} falhas permanentes; ${manifestSummary.transientFailuresExhausted} falhas transitórias esgotadas; ${manifestSummary.recommendedForDeletion} recomendados para revisão de exclusão. Exibindo ${filtered.length}.`
+    : `${allRecipients.length} destinatário(s) nesta campanha (lista fixada no preparo). Exibindo ${filtered.length}.`;
   recipientList.replaceChildren();
   for (const recipient of filtered.slice(0, 50)) {
     const article = document.createElement('article');
@@ -156,14 +169,14 @@ function paintRecipients() {
   }
 }
 
-function applyLockedState(campaign, recipients) {
+function applyLockedState(campaign, recipients, summary) {
   for (const control of form.elements) control.disabled = true;
   // Fora de rascunho não há edição: esconde "Salvar"; "Excluir" some só em execução.
   saveButton.hidden = true;
   deleteButton.hidden = campaign.status === 'running';
   actionsBar.hidden = campaign.status === 'running';
   prepareZone.hidden = true;
-  renderRecipients(recipients);
+  renderRecipients(recipients, summary);
   executionZone.hidden = false;
 }
 
@@ -181,7 +194,7 @@ function renderProgress(progress) {
   for (const [label, value] of [
     ['Total', progress.total],
     ['Pendentes', progress.pending],
-    ['Enviados', progress.sent],
+    ['Envios aceitos', progress.sent],
     ['Falhas', progress.failed],
     ['Ignorados', progress.skipped],
     [
@@ -280,11 +293,11 @@ async function load() {
     }
   }
   if (campaign.status !== 'draft') {
-    const [{ items }, progress] = await Promise.all([
-      request(`/api/campaigns/${campaignId}/recipients`),
+    const [manifest, progress] = await Promise.all([
+      request(`/api/campaigns/${campaignId}/manifest`),
       request(`/api/campaigns/${campaignId}/progress`),
     ]);
-    applyLockedState(campaign, items);
+    applyLockedState(campaign, manifest.items, manifest.summary);
     renderProgress(progress);
   } else {
     statusText.textContent = 'Status: rascunho editável.';
@@ -343,7 +356,8 @@ prepareButton.addEventListener('click', async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ confirmed: prepareConfirmation.checked }),
     });
-    applyLockedState(prepared.campaign, prepared.recipients);
+    const manifest = await request(`/api/campaigns/${campaignId}/manifest`);
+    applyLockedState(prepared.campaign, manifest.items, manifest.summary);
     renderProgress(await request(`/api/campaigns/${campaignId}/progress`));
   } catch (error) {
     showError(error.message);
@@ -392,9 +406,9 @@ events.addEventListener('campaign-progress', (event) => {
   if (progress.campaignId !== campaignId) return;
   renderProgress(progress);
   // Atualiza a lista de destinatários para refletir status/erros em tempo real.
-  void request(`/api/campaigns/${campaignId}/recipients`)
-    .then(({ items }) => {
-      if (!recipientReview.hidden) renderRecipients(items);
+  void request(`/api/campaigns/${campaignId}/manifest`)
+    .then((manifest) => {
+      if (!recipientReview.hidden) renderRecipients(manifest.items, manifest.summary);
     })
     .catch(() => {});
 });

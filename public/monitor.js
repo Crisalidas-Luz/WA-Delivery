@@ -84,7 +84,7 @@ function renderProgress(progress) {
   for (const [label, value] of [
     ['Total', progress.total],
     ['Pendentes', progress.pending],
-    ['Enviados', progress.sent],
+    ['Envios aceitos', progress.sent],
     ['Falhas', progress.failed],
     ['Ignorados', progress.skipped],
   ]) {

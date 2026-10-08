@@ -128,6 +128,11 @@ describe('CampaignQueueWorker', () => {
       assert.equal(progress?.sent, 1);
       assert.equal(progress?.pending, 0);
       assert.equal(provider.sent.length, 1);
+      const result = database
+        .prepare('SELECT result_code, result_reason FROM campaign_recipients WHERE campaign_id = ?')
+        .get(draft.id) as { result_code: string; result_reason: string };
+      assert.equal(result.result_code, 'accepted');
+      assert.match(result.result_reason, /não confirma entrega/i);
     } finally {
       worker.shutdown();
       database.close();
@@ -243,6 +248,16 @@ describe('CampaignQueueWorker', () => {
       const progress = repository.progress(draft.id);
       assert.equal(progress?.skipped, 1);
       assert.equal(progress?.failed, 0);
+      const recipient = database
+        .prepare(
+          `SELECT eligibility_status, result_code, deletion_recommendation,
+            deletion_reason_code FROM campaign_recipients WHERE campaign_id = ?`,
+        )
+        .get(draft.id) as Record<string, string>;
+      assert.equal(recipient.eligibility_status, 'not_on_whatsapp');
+      assert.equal(recipient.result_code, 'validation_failure');
+      assert.equal(recipient.deletion_recommendation, 'recommended');
+      assert.equal(recipient.deletion_reason_code, 'not_on_whatsapp');
     } finally {
       worker.shutdown();
       database.close();
@@ -258,9 +273,18 @@ describe('CampaignQueueWorker', () => {
       worker.start(draft.id, true);
       await waitUntil(() => repository.progress(draft.id)?.failed === 1);
       const row = database
-        .prepare('SELECT last_error FROM campaign_recipients WHERE campaign_id = ?')
-        .get(draft.id) as { last_error: string };
+        .prepare(
+          `SELECT last_error, result_code, deletion_recommendation
+           FROM campaign_recipients WHERE campaign_id = ?`,
+        )
+        .get(draft.id) as {
+        last_error: string;
+        result_code: string;
+        deletion_recommendation: string;
+      };
       assert.match(row.last_error, /^\[permanent\]/);
+      assert.equal(row.result_code, 'permanent_failure');
+      assert.equal(row.deletion_recommendation, 'not_recommended');
     } finally {
       worker.shutdown();
       database.close();
@@ -288,10 +312,13 @@ describe('CampaignQueueWorker', () => {
       assert.ok(attemptRows.every((r) => r.outcome === 'failed'));
       assert.ok(attemptRows.every((r) => r.error_kind === 'transient'));
       const recipient = database
-        .prepare('SELECT status, attempt_count FROM campaign_recipients WHERE campaign_id = ?')
-        .get(draft.id) as { status: string; attempt_count: number };
+        .prepare(
+          'SELECT status, attempt_count, result_code FROM campaign_recipients WHERE campaign_id = ?',
+        )
+        .get(draft.id) as { status: string; attempt_count: number; result_code: string };
       assert.equal(recipient.status, 'failed');
       assert.equal(recipient.attempt_count, 2);
+      assert.equal(recipient.result_code, 'transient_failure_exhausted');
     } finally {
       worker.shutdown();
       database.close();

@@ -247,6 +247,12 @@ export class CampaignQueueWorker {
         if (!registered) {
           this.repository.finishAttempt(attemptId, recipient.id, 'skipped', {
             error: 'O número não está registrado no WhatsApp.',
+            resultCode: 'validation_failure',
+            resultReason:
+              'O WhatsApp informou de forma conclusiva que o número não está registrado.',
+            eligibilityStatus: 'not_on_whatsapp',
+            deletionRecommendation: 'recommended',
+            deletionReasonCode: 'not_on_whatsapp',
           });
           logger.info(
             { campaignId, phone: maskPhone(recipient.phone), outcome: 'skipped' },
@@ -264,6 +270,10 @@ export class CampaignQueueWorker {
               );
           this.repository.finishAttempt(attemptId, recipient.id, 'sent', {
             messageId: result.messageId,
+            resultCode: 'accepted',
+            resultReason:
+              'O envio foi aceito pelo WhatsApp; isso não confirma entrega ao aparelho.',
+            deletionRecommendation: 'not_recommended',
           });
           logger.info(
             { campaignId, phone: maskPhone(recipient.phone), outcome: 'sent' },
@@ -294,6 +304,12 @@ export class CampaignQueueWorker {
           this.repository.finishAttempt(attemptId, recipient.id, 'failed', {
             error: `[${kind}] ${message}`,
             kind,
+            resultCode: kind === 'permanent' ? 'permanent_failure' : 'transient_failure_exhausted',
+            resultReason:
+              kind === 'permanent'
+                ? 'O envio falhou com um erro classificado como permanente.'
+                : `A falha transitória permaneceu após ${currentAttempt} tentativa(s).`,
+            deletionRecommendation: 'not_recommended',
           });
           logger.warn(
             { campaignId, phone: maskPhone(recipient.phone), kind },

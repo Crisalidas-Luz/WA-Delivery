@@ -179,12 +179,27 @@ Execução persistente em lotes (migration v12):
 - testes cobrem persistência da espera, congelamento durante pausa, retomada e ausência de espera
   após o último destinatário.
 
+Manifesto estruturado e semântica de resultado:
+
+- worker persiste `accepted`, `permanent_failure`, `transient_failure_exhausted`,
+  `validation_failure`, `skipped_opt_out` e `skipped_cancelled` conforme o caso;
+- número conclusivamente fora do WhatsApp muda para `not_on_whatsapp` e pode ser recomendado para
+  exclusão; falhas permanentes genéricas e transitórias nunca são recomendadas automaticamente;
+- sucesso é descrito como “envio aceito” com aviso explícito de que não confirma entrega;
+- endpoint `GET /api/campaigns/:id/manifest` retorna resumo e snapshots persistidos com tentativas,
+  motivos, lotes e recomendações;
+- CSV foi ampliado com lote, elegibilidade, resultado, motivo e recomendação, mantendo proteção
+  contra formula injection;
+- revisão de campanha consome o manifesto e filtra por status, elegibilidade ou recomendação;
+- testes cobrem aceite, número fora do WhatsApp, falha permanente, esgotamento transitório,
+  agregação do manifesto e endpoint.
+
 ## Validações da última etapa
 
 - `npm.cmd run typecheck`: passou.
 - `npm.cmd run lint`: passou.
 - `npm.cmd run format`: passou e normalizou os arquivos alterados.
-- `npm.cmd test`: 166 testes passaram, 0 falharam.
+- `npm.cmd test`: 167 testes passaram, 0 falharam.
 - `npm.cmd run build`: passou.
 - `node --check public/contacts.js`: passou.
 - Observação do ambiente: dentro do sandbox, o loader `tsx` falhou em `uv_os_get_passwd` com
@@ -194,8 +209,8 @@ Execução persistente em lotes (migration v12):
 
 ## Próximo passo
 
-1. Estruturar o manifesto pós-campanha e códigos/motivos de cada tentativa/resultado.
-2. Implementar revisão e jobs auditáveis de exclusão Google.
+1. Implementar revisão e jobs auditáveis de exclusão Google.
+2. Confirmar cada exclusão, executar sequencialmente e verificar por sincronização.
 3. Evoluir o editor visual para grupos `E`/`OU` aninhados sem perder ASTs já salvas.
 
 ## Decisões e cuidados ativos

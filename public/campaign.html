@@ -132,13 +132,19 @@
           <p id="recipient-summary"></p>
           <div class="recipient-toolbar">
             <label
-              >Filtrar por status
+              >Filtrar manifesto
               <select id="recipient-filter">
                 <option value="">Todos</option>
-                <option value="pending">Pendentes</option>
-                <option value="sent">Enviados</option>
-                <option value="failed">Falhas</option>
-                <option value="skipped">Ignorados</option>
+                <option value="status:sent">Envios aceitos</option>
+                <option value="status:pending">Pendentes</option>
+                <option value="status:failed">Falhas</option>
+                <option value="status:skipped">Ignorados</option>
+                <option value="eligibility:not_on_whatsapp">Fora do WhatsApp</option>
+                <option value="eligibility:missing_phone">Sem telefone</option>
+                <option value="eligibility:invalid_phone">Telefone inválido</option>
+                <option value="eligibility:duplicate_phone">Duplicados</option>
+                <option value="eligibility:opted_out">Opt-out</option>
+                <option value="recommendation:recommended">Exclusão recomendada</option>
               </select>
             </label>
             <div class="recipient-export">
