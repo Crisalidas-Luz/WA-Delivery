@@ -226,12 +226,27 @@ Editor visual de filtros aninhados:
   já validados pelo backend;
 - remoção preserva ao menos um nó por grupo, evitando criar grupos vazios pela interface.
 
+Follow-up novamente revisável:
+
+- a ação manual de reenvio agora cria um `draft`, nunca uma campanha pronta para disparo;
+- somente falhas estruturadas elegíveis (`permanent_failure`, `transient_failure_exhausted` e
+  `skipped_cancelled`) entram como candidatas, com fallback compatível para campanhas antigas;
+- opt-outs, números sem telefone, inelegíveis e envios já aceitos não entram no reenvio;
+- para Google, os pendentes viram uma seleção explícita de IDs, mantendo filtro/configuração
+  herdados e sendo revalidados contra a agenda ao preparar;
+- para listas locais, o novo snapshot só é criado após a segunda revisão e preserva as mensagens
+  renderizadas quando o template não mudou;
+- nome, template, mídia, intervalos e lotes permanecem editáveis antes do novo preparo;
+- mídia compartilhada entre campanha original e follow-up só é removida quando nenhuma campanha
+  ainda a referencia;
+- testes cobrem o novo rascunho local e a seleção explícita Google seguida de novo preparo.
+
 ## Validações da última etapa
 
 - `npm.cmd run typecheck`: passou.
 - `npm.cmd run lint`: passou.
 - `npm.cmd run format`: passou e normalizou os arquivos alterados.
-- `npm.cmd test`: 171 testes passaram, 0 falharam.
+- `npm.cmd test`: 172 testes passaram, 0 falharam.
 - `npm.cmd run build`: passou.
 - `node --check public/contacts.js`: passou.
 - Observação do ambiente: dentro do sandbox, o loader `tsx` falhou em `uv_os_get_passwd` com
@@ -241,12 +256,12 @@ Editor visual de filtros aninhados:
 
 ## Próximo passo
 
-1. Adaptar o follow-up para criar um rascunho editável no mesmo wizard, em vez de uma campanha já
-   preparada.
-2. Paginar o manifesto completo na interface e tornar jobs longos de exclusão retomáveis após
+1. Paginar o manifesto completo na interface e tornar jobs longos de exclusão retomáveis após
    reload/reinício, com progresso assíncrono.
-3. Implementar escolha manual do telefone nos contatos Google ambíguos e ampliar variáveis de
+2. Implementar escolha manual do telefone nos contatos Google ambíguos e ampliar variáveis de
    personalização para os campos sincronizados.
+3. Revisar onboarding/README e executar QA real de OAuth, sincronização, envio e exclusão com contas
+   de teste antes do merge.
 
 ## Decisões e cuidados ativos
 

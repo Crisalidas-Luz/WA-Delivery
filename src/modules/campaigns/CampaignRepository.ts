@@ -188,14 +188,18 @@ export class CampaignRepository {
         this.database.prepare("UPDATE media SET status = 'attached' WHERE id = ?").run(nextMediaId);
       }
       if (mediaChanged && existing.media_id !== null) {
-        this.database.prepare('DELETE FROM media WHERE id = ?').run(existing.media_id);
+        const references = this.database
+          .prepare('SELECT COUNT(*) AS total FROM campaigns WHERE media_id = ?')
+          .get(existing.media_id) as { total: number };
+        if (references.total === 0)
+          this.database.prepare('DELETE FROM media WHERE id = ?').run(existing.media_id);
       }
       this.database.exec('COMMIT');
       const campaign = this.findById(id);
       if (!campaign) throw new Error('O rascunho atualizado não pôde ser recuperado.');
       return {
         campaign,
-        ...(mediaChanged && existing.storage_name
+        ...(mediaChanged && existing.storage_name && !this.mediaExists(existing.media_id)
           ? { removedMediaStorageName: existing.storage_name }
           : {}),
       };
@@ -355,11 +359,21 @@ export class CampaignRepository {
     this.database.exec('BEGIN IMMEDIATE');
     try {
       this.database.prepare('DELETE FROM campaigns WHERE id = ?').run(id);
-      if (row.media_id !== null)
-        this.database.prepare('DELETE FROM media WHERE id = ?').run(row.media_id);
+      let removedMedia = false;
+      if (row.media_id !== null) {
+        const references = this.database
+          .prepare('SELECT COUNT(*) AS total FROM campaigns WHERE media_id = ?')
+          .get(row.media_id) as { total: number };
+        if (references.total === 0) {
+          this.database.prepare('DELETE FROM media WHERE id = ?').run(row.media_id);
+          removedMedia = true;
+        }
+      }
       this.database.exec('COMMIT');
       return {
-        ...(row.storage_name === null ? {} : { mediaStorageName: row.storage_name }),
+        ...(row.storage_name === null || !removedMedia
+          ? {}
+          : { mediaStorageName: row.storage_name }),
       };
     } catch (error) {
       this.database.exec('ROLLBACK');
@@ -367,27 +381,13 @@ export class CampaignRepository {
     }
   }
 
-  /**
-   * Cria uma nova campanha vinculada a uma campanha de origem, já preparada
-   * (status 'ready') e contendo apenas os destinatários informados como
-   * pendentes, como snapshot imutável. A campanha de origem permanece intacta
-   * como histórico. A mídia da origem, se houver, é reaproveitada.
-   */
-  public createFollowUp(
-    source: CampaignSummary,
-    pending: Array<{
-      sourceContactId?: number;
-      googleContactId?: number;
-      resourceName?: string;
-      name: string;
-      phone: string;
-      phoneOriginal?: string;
-      phoneLabel?: string;
-      renderedMessage: string;
-      batchNumber: number;
-      positionInBatch: number;
-    }>,
-  ): CampaignSummary {
+  private mediaExists(id: number | null): boolean {
+    if (id === null) return false;
+    return Boolean(this.database.prepare('SELECT 1 FROM media WHERE id = ?').get(id));
+  }
+
+  /** Cria um rascunho vinculado; o snapshot só será gerado após nova revisão. */
+  public createFollowUpDraft(source: CampaignSummary, pendingCount: number): CampaignSummary {
     this.database.exec('BEGIN IMMEDIATE');
     try {
       const result = this.database
@@ -395,10 +395,10 @@ export class CampaignRepository {
           `
         INSERT INTO campaigns (
           name, contact_list_id, message_template, delay_min_seconds, delay_max_seconds,
-          media_id, source_campaign_id, status, prepared_at, selection_source,
+          media_id, source_campaign_id, status, selection_source,
           selection_filter_json, selection_summary_json, selection_resolved_ids_json,
           batch_size, batch_interval_seconds, batch_order, batch_order_seed
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'ready', CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?)
       `,
         )
         .run(
@@ -411,7 +411,9 @@ export class CampaignRepository {
           source.id,
           source.selectionSource,
           source.contactSelection ? JSON.stringify(source.contactSelection) : null,
-          source.selectionSummary ? JSON.stringify(source.selectionSummary) : null,
+          JSON.stringify(
+            source.selectionSummary ?? { selected: pendingCount, eligible: pendingCount },
+          ),
           source.selectionResolvedIds ? JSON.stringify(source.selectionResolvedIds) : null,
           source.batchSize,
           source.batchIntervalSeconds,
@@ -423,27 +425,6 @@ export class CampaignRepository {
         this.database
           .prepare("UPDATE media SET status = 'attached' WHERE id = ?")
           .run(source.media.id);
-      }
-      const insert = this.database.prepare(`
-        INSERT INTO campaign_recipients (
-          campaign_id, source_contact_id, google_contact_id, resource_name_snapshot, name, phone,
-          phone_original, phone_label, rendered_message, batch_number, position_in_batch
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `);
-      for (const recipient of pending) {
-        insert.run(
-          newId,
-          recipient.sourceContactId ?? null,
-          recipient.googleContactId ?? null,
-          recipient.resourceName ?? null,
-          recipient.name,
-          recipient.phone,
-          recipient.phoneOriginal ?? recipient.phone,
-          recipient.phoneLabel ?? null,
-          recipient.renderedMessage,
-          recipient.batchNumber,
-          recipient.positionInBatch,
-        );
       }
       this.database.exec('COMMIT');
       const created = this.findById(newId);
@@ -541,6 +522,8 @@ function baseQuery(where = ''): string {
       , media.size_bytes AS media_size_bytes
       , CASE WHEN campaigns.status = 'draft' AND campaigns.selection_source = 'google'
           THEN COALESCE(json_extract(campaigns.selection_summary_json, '$.eligible'), 0)
+          WHEN campaigns.status = 'draft' AND campaigns.source_campaign_id IS NOT NULL
+            THEN COALESCE(json_extract(campaigns.selection_summary_json, '$.eligible'), 0)
           WHEN campaigns.status = 'draft' THEN COUNT(members.id)
           ELSE (SELECT COUNT(*) FROM campaign_recipients recipients WHERE recipients.campaign_id = campaigns.id)
         END AS recipient_count

@@ -7,6 +7,7 @@ const form = document.querySelector('#campaign-form');
 const campaignName = document.querySelector('#campaign-name');
 const contactList = document.querySelector('#campaign-list');
 const contactListLabel = document.querySelector('#campaign-list-label');
+const followUpSelectionNote = document.querySelector('#follow-up-selection-note');
 const googleSelectionPanel = document.querySelector('#campaign-google-selection');
 const googleSelectionSummary = document.querySelector('#campaign-google-selection-summary');
 const messageTemplate = document.querySelector('#message-template');
@@ -356,6 +357,10 @@ async function load() {
   loadedCampaign = campaign;
   campaignName.value = campaign.name;
   contactList.value = campaign.contactListId ? String(campaign.contactListId) : '';
+  if (campaign.sourceCampaignId && campaign.selectionSource === 'local_list') {
+    contactList.disabled = true;
+    followUpSelectionNote.hidden = false;
+  }
   const usesGoogle = campaign.selectionSource === 'google';
   contactListLabel.hidden = usesGoogle;
   googleSelectionPanel.hidden = !usesGoogle;

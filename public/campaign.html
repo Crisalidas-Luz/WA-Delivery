@@ -32,9 +32,12 @@
         <form id="campaign-form">
           <div class="mapping-grid">
             <label>Nome da campanha<input id="campaign-name" required /></label>
-            <label id="campaign-list-label"
-              >Lista de contatos<select id="campaign-list"></select
-            ></label>
+            <label id="campaign-list-label">
+              Lista de contatos<select id="campaign-list"></select>
+              <small id="follow-up-selection-note" hidden
+                >Este rascunho usa somente os pendentes elegíveis da campanha de origem.</small
+              >
+            </label>
           </div>
           <div id="campaign-google-selection" class="selection-source-card" hidden>
             <div>

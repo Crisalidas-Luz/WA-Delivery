@@ -540,7 +540,7 @@ describe('CampaignService.createFollowUp', () => {
     return { database, list, campaigns };
   }
 
-  it('cria uma nova campanha vinculada apenas com os pendentes', () => {
+  it('cria rascunho vinculado e só congela os pendentes depois da nova revisão', () => {
     const { database, list, campaigns } = buildWithList([
       { name: 'Ana', phone: '16999999999' },
       { name: 'Maria', phone: '16988888888' },
@@ -561,8 +561,11 @@ describe('CampaignService.createFollowUp', () => {
       database.prepare("UPDATE campaigns SET status = 'completed' WHERE id = ?").run(original.id);
 
       const followUp = campaigns.createFollowUp(original.id);
-      assert.equal(followUp.status, 'ready');
+      assert.equal(followUp.status, 'draft');
       assert.equal(followUp.sourceCampaignId, original.id);
+      assert.equal(campaigns.listRecipients(followUp.id)?.length, 0);
+      const prepared = campaigns.prepareDraft(followUp.id, true);
+      assert.equal(prepared?.status, 'ready');
       const followUpRecipients = campaigns.listRecipients(followUp.id) ?? [];
       assert.equal(followUpRecipients.length, 2); // apenas failed + skipped
       assert.ok(followUpRecipients.every((r) => r.status === 'pending'));
@@ -594,6 +597,47 @@ describe('CampaignService.createFollowUp', () => {
         .run(recipients[0].id);
       database.prepare("UPDATE campaigns SET status = 'completed' WHERE id = ?").run(original.id);
       assert.throws(() => campaigns.createFollowUp(original.id), CampaignValidationError);
+    } finally {
+      database.close();
+    }
+  });
+
+  it('transforma pendentes Google em seleção explícita e revalida no novo preparo', () => {
+    const { database, campaigns } = setupGoogleCampaigns();
+    try {
+      const source = campaigns.createDraft({
+        name: 'Google original',
+        contactSelection: allGoogleContacts,
+        messageTemplate: 'Olá {{nome}}',
+        delayMinSeconds: 1,
+        delayMaxSeconds: 2,
+      });
+      campaigns.prepareDraft(source.id, true);
+      const eligible = (campaigns.listRecipients(source.id) ?? []).filter(
+        (recipient) => recipient.eligibilityStatus === 'eligible',
+      );
+      assert.equal(eligible.length, 2);
+      database
+        .prepare(
+          "UPDATE campaign_recipients SET status = 'sent', result_code = 'accepted' WHERE id = ?",
+        )
+        .run(eligible[0]?.id);
+      database
+        .prepare(
+          "UPDATE campaign_recipients SET status = 'failed', result_code = 'transient_failure_exhausted' WHERE id = ?",
+        )
+        .run(eligible[1]?.id);
+      database.prepare("UPDATE campaigns SET status = 'completed' WHERE id = ?").run(source.id);
+
+      const followUp = campaigns.createFollowUp(source.id);
+      assert.equal(followUp.status, 'draft');
+      assert.equal(followUp.contactSelection?.selectAllMatching, false);
+      assert.deepEqual(followUp.contactSelection?.includedIds, [eligible[1]?.googleContactId]);
+      assert.equal(followUp.selectionSummary?.eligible, 1);
+      campaigns.prepareDraft(followUp.id, true);
+      const recipients = campaigns.listRecipients(followUp.id) ?? [];
+      assert.equal(recipients.length, 1);
+      assert.equal(recipients[0]?.googleContactId, eligible[1]?.googleContactId);
     } finally {
       database.close();
     }

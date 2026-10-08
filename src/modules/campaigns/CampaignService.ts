@@ -132,7 +132,11 @@ export class CampaignService {
     if (!existing || existing.status !== 'draft') return undefined;
     const validated = this.validate(input, true, existing.media?.id);
     const { mediaId: _mediaId, ...simulationInput } = validated;
-    this.simulate(simulationInput);
+    if (existing.sourceCampaignId && existing.selectionSource === 'local_list') {
+      this.requireFollowUpCandidates(existing.sourceCampaignId);
+    } else {
+      this.simulate(simulationInput);
+    }
     const updated = this.repository.updateDraft(
       id,
       validated as CampaignComposerInput & { name: string },
@@ -196,17 +200,7 @@ export class CampaignService {
         },
       ]);
     }
-    // Pendentes = destinatários que não foram enviados com sucesso.
-    const optedOut = this.contacts.optedOutPhones();
-    const pending = this.repository
-      .listRecipients(id)
-      .filter(
-        (recipient): recipient is CampaignRecipientSnapshot & { phone: string } =>
-          recipient.status !== 'sent' &&
-          recipient.phone !== undefined &&
-          recipient.eligibilityStatus === 'eligible' &&
-          !optedOut.has(recipient.phone),
-      );
+    const pending = this.requireFollowUpCandidates(id);
     if (pending.length === 0) {
       throw new CampaignValidationError([
         {
@@ -215,27 +209,31 @@ export class CampaignService {
         },
       ]);
     }
-    return this.repository.createFollowUp(
-      source,
-      pending.map((recipient) => ({
-        ...(recipient.sourceContactId === undefined
-          ? {}
-          : { sourceContactId: recipient.sourceContactId }),
-        ...(recipient.googleContactId === undefined
-          ? {}
-          : { googleContactId: recipient.googleContactId }),
-        ...(recipient.resourceName === undefined ? {} : { resourceName: recipient.resourceName }),
-        name: recipient.name,
-        phone: recipient.phone,
-        ...(recipient.phoneOriginal === undefined
-          ? {}
-          : { phoneOriginal: recipient.phoneOriginal }),
-        ...(recipient.phoneLabel === undefined ? {} : { phoneLabel: recipient.phoneLabel }),
-        renderedMessage: recipient.renderedMessage,
-        batchNumber: recipient.batchNumber,
-        positionInBatch: recipient.positionInBatch,
-      })),
-    );
+    let draftSource = source;
+    if (source.selectionSource === 'google') {
+      const googleIds = pending
+        .map((recipient) => recipient.googleContactId)
+        .filter((contactId): contactId is number => contactId !== undefined);
+      if (googleIds.length === 0 || !source.contactSelection) {
+        throw new CampaignValidationError([
+          { path: 'recipients', message: 'Os pendentes não possuem vínculo Google válido.' },
+        ]);
+      }
+      const selection = {
+        ...source.contactSelection,
+        selectAllMatching: false,
+        includedIds: googleIds,
+        excludedIds: [],
+      };
+      const resolved = this.requireGoogleSelection(selection);
+      draftSource = {
+        ...source,
+        contactSelection: resolved.definition,
+        selectionSummary: resolved.summary,
+        selectionResolvedIds: resolved.contactIds,
+      };
+    }
+    return this.repository.createFollowUpDraft(draftSource, pending.length);
   }
 
   public prepareDraft(id: number, confirmed: boolean): CampaignSummary | undefined {
@@ -246,6 +244,9 @@ export class CampaignService {
     }
     const campaign = this.repository.findById(id);
     if (!campaign || campaign.status !== 'draft') return undefined;
+    if (campaign.sourceCampaignId && campaign.selectionSource === 'local_list') {
+      return this.prepareLocalFollowUp(campaign);
+    }
     if (campaign.selectionSource === 'google') return this.prepareGoogleDraft(campaign);
     const list = this.contacts.findById(campaign.contactListId!);
     if (!list || list.contacts.length === 0) {
@@ -270,6 +271,61 @@ export class CampaignService {
         name: contact.name,
         phone: contact.phone,
         renderedMessage: renderMessage(campaign.messageTemplate, contact.name, contact.data),
+        batchNumber: Math.floor(index / campaign.batchSize) + 1,
+        positionInBatch: (index % campaign.batchSize) + 1,
+      })),
+    );
+  }
+
+  private requireFollowUpCandidates(
+    sourceId: number,
+  ): Array<CampaignRecipientSnapshot & { phone: string }> {
+    const optedOut = this.contacts.optedOutPhones();
+    const candidates = this.repository
+      .listRecipients(sourceId)
+      .filter(
+        (recipient): recipient is CampaignRecipientSnapshot & { phone: string } =>
+          recipient.status !== 'sent' &&
+          recipient.phone !== undefined &&
+          recipient.eligibilityStatus === 'eligible' &&
+          !optedOut.has(recipient.phone) &&
+          (['permanent_failure', 'transient_failure_exhausted', 'skipped_cancelled'].includes(
+            recipient.resultCode ?? '',
+          ) ||
+            (!recipient.resultCode && ['failed', 'skipped'].includes(recipient.status))),
+      );
+    if (candidates.length === 0) {
+      throw new CampaignValidationError([
+        {
+          path: 'recipients',
+          message: 'Não há destinatários pendentes elegíveis para reenviar nesta campanha.',
+        },
+      ]);
+    }
+    return candidates;
+  }
+
+  private prepareLocalFollowUp(campaign: CampaignSummary): CampaignSummary | undefined {
+    const source = this.repository.findById(campaign.sourceCampaignId!);
+    if (!source) {
+      throw new CampaignValidationError([
+        { path: 'sourceCampaignId', message: 'A campanha de origem não está mais disponível.' },
+      ]);
+    }
+    const candidates = this.requireFollowUpCandidates(source.id);
+    return this.repository.prepareDraft(
+      campaign.id,
+      candidates.map((recipient, index) => ({
+        ...(recipient.sourceContactId === undefined
+          ? {}
+          : { sourceContactId: recipient.sourceContactId }),
+        name: recipient.name,
+        phone: recipient.phone,
+        phoneOriginal: recipient.phoneOriginal ?? recipient.phone,
+        renderedMessage:
+          campaign.messageTemplate === source.messageTemplate
+            ? recipient.renderedMessage
+            : renderMessage(campaign.messageTemplate, recipient.name),
         batchNumber: Math.floor(index / campaign.batchSize) + 1,
         positionInBatch: (index % campaign.batchSize) + 1,
       })),
