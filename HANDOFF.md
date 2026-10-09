@@ -483,7 +483,7 @@ Configuração local das credenciais OAuth (migration v13):
 - correção de compatibilidade carrega explicitamente `System.Security` no `powershell.exe` clássico
   antes de usar DPAPI; um teste de regressão executa proteção e abertura reais no Windows.
 
-- `npm run check`: passou com 203 testes, incluindo typecheck, lint, formatação e build.
+- `npm run check`: passou com 204 testes, incluindo typecheck, lint, formatação e build.
 - `git diff --check`: passou.
 
 - `npm.cmd run typecheck`: passou.
@@ -502,12 +502,37 @@ Configuração local das credenciais OAuth (migration v13):
 - Observação do ambiente: dentro do sandbox, o loader `tsx` falhou em `uv_os_get_passwd` com
   `ENOMEM`; a mesma suíte executada fora do sandbox passou integralmente.
 
+## Marco de validação manual — 8 de outubro de 2026
+
+O usuário concluiu com sucesso o primeiro teste real da integração Google:
+
+- criou o projeto no Google Cloud e manteve o app OAuth em modo de teste;
+- cadastrou como test user o e-mail da conta que utilizará o WA-Delivery;
+- salvou Client ID e Client secret pela nova tela local;
+- reiniciou a aplicação e concluiu o OAuth com a conta esperada;
+- confirmou que a conexão e a sincronização do Google Contacts funcionaram;
+- testou os filtros e consultas sobre os contatos sincronizados e informou que funcionam
+  perfeitamente.
+
+A falha inicial `Falha ao acessar o cofre seguro do Windows (1)` foi reproduzida e corrigida no
+commit `819ad96`: o subprocesso `powershell.exe` clássico precisava carregar explicitamente o
+assembly `System.Security` antes de chamar DPAPI. O teste real passou depois da correção.
+
+A exclusão remota de contatos Google ainda **não foi testada manualmente**. Sua implementação e
+cenários simulados estão cobertos pela suíte automatizada, mas a validação com a API real deve usar
+primeiro um contato descartável, nunca um contato importante. É necessário conferir o job, a
+confirmação explícita, o resultado remoto, a sincronização posterior e a auditoria no manifesto.
+
+O desenvolvimento principal está funcional. A próxima fase é de refinamentos orientados pelo uso,
+preservando os contratos de segurança, snapshots, auditoria e compatibilidade já implementados.
+
 ## Próximo passo
 
-1. Executar QA visual em um ambiente com navegador disponível.
-2. Executar QA real de OAuth, sincronização, envio e exclusão com contas de teste.
-3. Corrigir somente problemas encontrados no QA e repetir `npm.cmd run check`/`npm.cmd audit`.
-4. Fazer merge para `main` apenas depois da validação integral e aprovação explícita do usuário.
+1. Testar a exclusão Google com um contato descartável e validar todo o ciclo de auditoria.
+2. Testar uma campanha real controlada, incluindo lotes, pausa/retomada, manifesto e follow-up.
+3. Registrar e implementar refinamentos encontrados durante o uso cotidiano.
+4. Repetir `npm run check` e `npm audit` depois de cada alteração relevante.
+5. Fazer merge para `main` apenas depois da validação integral e aprovação explícita do usuário.
 
 ## Decisões e cuidados ativos
 
