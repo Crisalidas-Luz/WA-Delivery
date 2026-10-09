@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import type { SecretProtector } from './ProtectedFileGoogleTokenStore.js';
 
 const PROTECT_SCRIPT = `
+Add-Type -AssemblyName System.Security
 $inputValue = [Console]::In.ReadToEnd()
 $bytes = [Convert]::FromBase64String($inputValue)
 $protected = [Security.Cryptography.ProtectedData]::Protect($bytes, $null, [Security.Cryptography.DataProtectionScope]::CurrentUser)
@@ -9,6 +10,7 @@ $protected = [Security.Cryptography.ProtectedData]::Protect($bytes, $null, [Secu
 `;
 
 const UNPROTECT_SCRIPT = `
+Add-Type -AssemblyName System.Security
 $inputValue = [Console]::In.ReadToEnd()
 $bytes = [Convert]::FromBase64String($inputValue)
 $plain = [Security.Cryptography.ProtectedData]::Unprotect($bytes, $null, [Security.Cryptography.DataProtectionScope]::CurrentUser)

@@ -7,6 +7,7 @@ import {
   ProtectedFileGoogleTokenStore,
   type SecretProtector,
 } from '../src/providers/google/token-store/ProtectedFileGoogleTokenStore.js';
+import { WindowsDpapiSecretProtector } from '../src/providers/google/token-store/WindowsDpapiSecretProtector.js';
 
 class ReversingProtector implements SecretProtector {
   public async protect(value: Buffer): Promise<Buffer> {
@@ -53,4 +54,21 @@ describe('ProtectedFileGoogleTokenStore', () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
+});
+
+describe('WindowsDpapiSecretProtector', () => {
+  it(
+    'carrega o assembly necessário e protege dados com o usuário atual',
+    { skip: process.platform !== 'win32' },
+    async () => {
+      const protector = new WindowsDpapiSecretProtector();
+      const plaintext = Buffer.from('dpapi-regression-test', 'utf8');
+      const protectedBytes = await protector.protect(plaintext);
+      assert.notDeepEqual(protectedBytes, plaintext);
+      assert.equal(
+        (await protector.unprotect(protectedBytes)).toString('utf8'),
+        plaintext.toString(),
+      );
+    },
+  );
 });

@@ -480,6 +480,8 @@ Configuração local das credenciais OAuth (migration v13):
 - o tutorial completo foi criado fora do repositório em
   `C:\Users\Deia\Documents\WA-Delivery-Google-Cloud-Tutorial.md`, conforme solicitado;
 - testes cobrem persistência sem segredo no SQLite, rotas, exclusão, validação e override.
+- correção de compatibilidade carrega explicitamente `System.Security` no `powershell.exe` clássico
+  antes de usar DPAPI; um teste de regressão executa proteção e abertura reais no Windows.
 
 - `npm run check`: passou com 203 testes, incluindo typecheck, lint, formatação e build.
 - `git diff --check`: passou.
